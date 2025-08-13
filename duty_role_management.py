@@ -34,50 +34,49 @@ SECURITY_CONSOLE_URL = get_security_console_url()
 
 
 def initialize_driver():
-    """Initialize Chrome WebDriver with system Chrome for Streamlit Cloud deployment"""
-    options = webdriver.ChromeOptions()
-    # Headless mode for better user experience
-    options.add_argument("--headless")
-    options.add_argument("--disable-popup-blocking")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("--disable-extensions")
-    options.add_argument("--disable-plugins")
-    options.add_argument("--disable-images")
-    options.add_argument("--disable-web-security")
-    options.add_argument("--disable-features=VizDisplayCompositor")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option('useAutomationExtension', False)
-    options.add_experimental_option("prefs", {
-        "profile.default_content_setting_values.notifications": 2,
+    """Initialize Chrome WebDriver with robust version handling for Streamlit Cloud deployment"""
+    from chromedriver_fix import initialize_driver_robust
+    return initialize_driver_robust()
+default_content_setting_values.notifications": 2,
         "profile.default_content_settings.popups": 0
     })
 
-    # For Streamlit Cloud deployment, use system Chrome
+    # Strategy 1: Try ChromeDriverManager first (most reliable for version compatibility)
     try:
-        print("🔄 Initializing Chrome with system installation...")
-        driver = webdriver.Chrome(options=options)
-        print("✅ Chrome initialized successfully")
+        print("🔄 Trying ChromeDriverManager for version compatibility...")
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=options)
+        print("✅ ChromeDriver initialized successfully with ChromeDriverManager")
+        # Execute script to remove webdriver property
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         return driver
     except Exception as e:
-        print(f"⚠️ System Chrome failed: {e}")
+        print(f"⚠️ ChromeDriverManager failed: {e}")
+        
+        # Strategy 2: Try system Chrome with specific binary path
         try:
-            # Fallback to ChromeDriverManager
-            print("🔄 Trying ChromeDriverManager as fallback...")
-            service = Service(ChromeDriverManager().install())
-            driver = webdriver.Chrome(service=service, options=options)
-            print("✅ ChromeDriver initialized with ChromeDriverManager")
+            print("🔄 Trying system Chrome with specific binary...")
+            options.binary_location = "/usr/bin/chromium"
+            driver = webdriver.Chrome(options=options)
+            print("✅ Chrome initialized with system binary")
+            # Execute script to remove webdriver property
+            driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
             return driver
         except Exception as e2:
-            print(f"❌ All Chrome initialization strategies failed: {e2}")
-            raise
-
-    # Execute script to remove webdriver property
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-
-    return driver
+            print(f"⚠️ System Chrome failed: {e2}")
+            
+            # Strategy 3: Try without specifying binary location
+            try:
+                print("🔄 Trying system Chrome without binary specification...")
+                options.binary_location = None  # Reset binary location
+                driver = webdriver.Chrome(options=options)
+                print("✅ Chrome initialized without binary specification")
+                # Execute script to remove webdriver property
+                driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+                return driver
+            except Exception as e3:
+                print(f"❌ All Chrome initialization strategies failed: {e3}")
+                raise Exception(f"Failed to initialize Chrome WebDriver. All strategies failed: {e}, {e2}, {e3}")
 
 
 def click_next_button_OLD(driver, max_retries=3):

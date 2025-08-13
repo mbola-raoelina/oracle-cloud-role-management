@@ -1,0 +1,17 @@
+GREAT!
+in the same way lets create codes to add or delete privileges into roles based on input excel info data :
+- similar to add duty role process but at instead of  # [5] Click Next button 3 times, need to Click 1 time on Next button
+- then click on 'Add Function Security Policy' button that is contained inside multiple nested tables and div structures:
+<td class="x1id"><a style="display: none;"></a><div id="_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:2:fsSp1:atPol:_ATp:ctb1" title="Add Function Security Policy" class="xeq" _afrgrp="0" role="presentation"><a href="#" onclick="this.focus();return false" class="xri" aria-describedby="_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:2:fsSp1:atPol:_ATp:ctb1_afrdescBy" role="button"><img id="_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:2:fsSp1:atPol:_ATp:ctb1::icon" src="/hcmUI/images/func_add_16_ena.png" alt="" class="x1kd"><span class="xrm">Add Function Security Policy</span></a><span id="_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:2:fsSp1:atPol:_ATp:ctb1_afrdescBy" class="x9w">Add Function Security Policy</span></div></td>
+
+- on the pop up window that appears , insert the privilege code in below input element and then press enter:
+<input id="_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:2:fsSp1:fsSrcBx::content" name="_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:2:fsSp1:fsSrcBx" style="width:auto" class="x25" placeholder="Enter 3 or more characters to search" size="40" autocomplete="off" type="text" value="" aria-live="off" aria-label="Search" role="combobox" aria-autocomplete="list" aria-owns="_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:2:fsSp1:fsSrcBx::_fndSuggestPopup" aria-expanded="false" title="EXM_EXPORT_EXPENSE_REPORT_PRIV">
+- time sleep, and then CLICK on the row that have the exact Code , like below (contained inside mutiple nested tables and div elements )
+<tr class="x2kr xk6 p_AFReadOnly" id="_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:2:fsSp1:fsRsLst:0:plam1"><td class="x15 x4z" style="vertical-align: top;"><label class="af_panelLabelAndMessage_label-text">Code</label></td><td valign="top" style="padding-left:14px" class="x18y xk7">EXM_EXPORT_EXPENSE_REPORT_PRIV</td></tr>
+- time sleep, then click on 'Add Privilege to Role'
+<button id="_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:2:fsSp1:fsPAdd" class="xuz p_AFTextOnly" onclick="this.focus();return false;" title="Add Privilege to Role">Add Privilege to Role</button>
+
+- then close the pop up by clicking on :
+<td class="x3dj"><div class="x1q0"><a href="#" onclick="this.focus();return false" class="x1pr" id="_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:2:fsSp1:d1::close" title="Close"></a></div></td>
+- then Click on Next button 4 times 
+- Finally Click Save and Close and handle confirmation similar to previous codes 
