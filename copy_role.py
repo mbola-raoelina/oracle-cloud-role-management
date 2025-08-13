@@ -864,7 +864,8 @@ def main():
     try:
         # Read Excel input with column validation
         try:
-            input_file = "role_copy_input.xlsx"
+            # Get input file path from environment variable (set by Streamlit) or use default
+            input_file = os.environ.get("INPUT_FILE_PATH", "role_copy_input.xlsx")
             required_columns = {'Role to Copy', 'New Role Name', 'New Role Code'}
 
             df = pd.read_excel(input_file)

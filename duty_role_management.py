@@ -544,7 +544,8 @@ def main():
     df = None
     try:
         # Read input Excel file with required columns
-        input_file = "duty_role_input.xlsx"
+        # Get input file path from environment variable (set by Streamlit) or use default
+        input_file = os.environ.get("INPUT_FILE_PATH", "duty_role_input.xlsx")
         required_columns = {
             'Existing Role Name to Edit',
             'Existing Role Code',

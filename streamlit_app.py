@@ -588,6 +588,9 @@ def show_create_role_page():
                                 script_dir = os.path.dirname(os.path.abspath(__file__))
                                 os.chdir(script_dir)
                                 
+                                # Set the input file path for the automation script
+                                os.environ["INPUT_FILE_PATH"] = tmp_file_path
+                                
                                 # Run the automation
                                 create_role_main()
                                 
@@ -676,6 +679,9 @@ def show_copy_role_page():
                                 original_dir = os.getcwd()
                                 script_dir = os.path.dirname(os.path.abspath(__file__))
                                 os.chdir(script_dir)
+                                
+                                # Set the input file path for the automation script
+                                os.environ["INPUT_FILE_PATH"] = tmp_file_path
                                 
                                 # Run the automation
                                 copy_role_main()
@@ -766,6 +772,9 @@ def show_duty_role_page():
                                 script_dir = os.path.dirname(os.path.abspath(__file__))
                                 os.chdir(script_dir)
                                 
+                                # Set the input file path for the automation script
+                                os.environ["INPUT_FILE_PATH"] = tmp_file_path
+                                
                                 # Run the automation
                                 duty_role_main()
                                 
@@ -854,6 +863,9 @@ def show_privilege_management_page():
                                 original_dir = os.getcwd()
                                 script_dir = os.path.dirname(os.path.abspath(__file__))
                                 os.chdir(script_dir)
+                                
+                                # Set the input file path for the automation script
+                                os.environ["INPUT_FILE_PATH"] = tmp_file_path
                                 
                                 # Run the automation
                                 privilege_management_main()
