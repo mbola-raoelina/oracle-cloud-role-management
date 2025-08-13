@@ -119,14 +119,10 @@ def main():
     username = st.sidebar.text_input("Oracle Username", type="default", help="Your Oracle Cloud username")
     password = st.sidebar.text_input("Oracle Password", type="password", help="Your Oracle Cloud password")
     
-    # Test connection button
+    # Connect button
     if username and password:
-        if st.sidebar.button("🔗 Test Connection", help="Test your Oracle Cloud credentials"):
-            # Create progress indicators
-            progress_bar = st.sidebar.progress(0)
-            status_text = st.sidebar.empty()
-            
-            with st.spinner("Testing connection..."):
+        if st.sidebar.button("🔗 Connect", help="Connect to Oracle Cloud"):
+            with st.spinner("Connecting..."):
                 try:
                     # Import test function
                     from selenium import webdriver
@@ -156,39 +152,22 @@ def main():
                         "profile.default_content_settings.popups": 0
                     })
                     
-                    # Build URL based on environment
-                    base_url = f"https://iabbzv-{environment}.fa.ocs.oraclecloud.com"
-                    security_console_url = f"{base_url}/hcmUI/faces/FndOverview?fnd=%3B%3B%3B%3Bfalse%3B256%3B%3B%3B&fndGlobalItemNodeId=ASE_FUSE_SECURITY_CONSOLE"
-                    
-                    # Debug: Print the URL being used
-                    st.sidebar.info(f"🔍 Testing URL: {security_console_url}")
-                    
-                    # Initialize driver with robust settings
-                    status_text.text("🔄 Initializing ChromeDriver...")
-                    progress_bar.progress(10)
-                    try:
-                        # Use our robust ChromeDriver initialization
-                        from chromedriver_fix import initialize_driver_robust
-                        driver = initialize_driver_robust()
-                        st.sidebar.info("✅ ChromeDriver initialized successfully")
-                        progress_bar.progress(20)
-                    except Exception as driver_error:
-                        st.sidebar.error(f"❌ ChromeDriver initialization failed: {str(driver_error)}")
-                        return
+                                         # Build URL based on environment
+                     base_url = f"https://iabbzv-{environment}.fa.ocs.oraclecloud.com"
+                     security_console_url = f"{base_url}/hcmUI/faces/FndOverview?fnd=%3B%3B%3B%3Bfalse%3B256%3B%3B%3B&fndGlobalItemNodeId=ASE_FUSE_SECURITY_CONSOLE"
                      
-                    try:
-                        # Navigate to login page
-                        st.sidebar.info("🌐 Navigating to Oracle Cloud...")
-                        driver.get(security_console_url)
-                        
-                        # Debug: Print current URL and page title
-                        current_url = driver.current_url
-                        page_title = driver.title
-                        st.sidebar.info(f"📄 Page Title: {page_title}")
-                        st.sidebar.info(f"🔗 Current URL: {current_url}")
-                        
-                        # Wait for page to load (reduced timeout)
-                        time.sleep(2)
+                     # Initialize driver with robust settings
+                     try:
+                         from chromedriver_fix import initialize_driver_robust
+                         driver = initialize_driver_robust()
+                     except Exception as driver_error:
+                         st.sidebar.error("❌ Connection failed: ChromeDriver error")
+                         return
+                     
+                                         try:
+                         # Navigate to login page
+                         driver.get(security_console_url)
+                         time.sleep(2)
                         
                         # Try multiple selectors for username field
                         username_field = None
@@ -202,22 +181,18 @@ def main():
                             (By.CSS_SELECTOR, "input[placeholder*='User']")
                         ]
                         
-                        for selector_type, selector_value in username_selectors:
-                             try:
-                                 username_field = WebDriverWait(driver, 3).until(
-                                     EC.presence_of_element_located((selector_type, selector_value))
-                                 )
-                                 st.sidebar.info(f"✅ Found username field with: {selector_type}={selector_value}")
-                                 break
-                             except:
-                                 continue
-                        
-                        if not username_field:
-                            st.sidebar.error("❌ Could not find username field")
-                            # Debug: Show page source for troubleshooting
-                            st.sidebar.text("🔍 Page source preview:")
-                            st.sidebar.code(driver.page_source[:1000])
-                            return
+                                                 for selector_type, selector_value in username_selectors:
+                              try:
+                                  username_field = WebDriverWait(driver, 3).until(
+                                      EC.presence_of_element_located((selector_type, selector_value))
+                                  )
+                                  break
+                              except:
+                                  continue
+                         
+                         if not username_field:
+                             st.sidebar.error("❌ Connection failed: Invalid environment")
+                             return
                         
                         # Try multiple selectors for password field
                         password_field = None
@@ -227,24 +202,22 @@ def main():
                             (By.CSS_SELECTOR, "input[type='password']")
                         ]
                         
-                        for selector_type, selector_value in password_selectors:
-                            try:
-                                password_field = driver.find_element(selector_type, selector_value)
-                                st.sidebar.info(f"✅ Found password field with: {selector_type}={selector_value}")
-                                break
-                            except:
-                                continue
-                        
-                        if not password_field:
-                            st.sidebar.error("❌ Could not find password field")
-                            return
-                        
-                        # Enter credentials
-                        st.sidebar.info("🔑 Entering credentials...")
-                        username_field.clear()
-                        username_field.send_keys(username)
-                        password_field.clear()
-                        password_field.send_keys(password)
+                                                 for selector_type, selector_value in password_selectors:
+                             try:
+                                 password_field = driver.find_element(selector_type, selector_value)
+                                 break
+                             except:
+                                 continue
+                         
+                         if not password_field:
+                             st.sidebar.error("❌ Connection failed: Invalid environment")
+                             return
+                         
+                         # Enter credentials
+                         username_field.clear()
+                         username_field.send_keys(username)
+                         password_field.clear()
+                         password_field.send_keys(password)
                         
                         # Try multiple selectors for login button
                         login_button = None
@@ -259,131 +232,38 @@ def main():
                             (By.XPATH, "//input[@value='Login']")
                         ]
                         
-                        for selector_type, selector_value in login_selectors:
-                            try:
-                                login_button = driver.find_element(selector_type, selector_value)
-                                st.sidebar.info(f"✅ Found login button with: {selector_type}={selector_value}")
-                                break
-                            except:
-                                continue
+                                                 for selector_type, selector_value in login_selectors:
+                             try:
+                                 login_button = driver.find_element(selector_type, selector_value)
+                                 break
+                             except:
+                                 continue
+                         
+                         if not login_button:
+                             st.sidebar.error("❌ Connection failed: Invalid environment")
+                             return
+                         
+                         # Submit form
+                         login_button.click()
+                         time.sleep(3)
                         
-                        if not login_button:
-                            st.sidebar.error("❌ Could not find login button")
-                            return
-                        
-                        # Submit form
-                        st.sidebar.info("🚀 Submitting login form...")
-                        login_button.click()
-                        
-                        # Wait for page transition (reduced timeout)
-                        time.sleep(3)
-                        
-                        # Check current URL after login attempt
-                        post_login_url = driver.current_url
-                        st.sidebar.info(f"🔗 Post-login URL: {post_login_url}")
-                        
-                        # Wait for either success or error
-                        try:
-                            # Check for successful login (multiple indicators)
-                            success_indicators = [
-                                (By.CSS_SELECTOR, "[id*='FndOverview']"),
-                                 (By.CSS_SELECTOR, "[id*='dashboard']"),
-                                 (By.CSS_SELECTOR, "[class*='welcome']"),
-                                 (By.XPATH, "//span[contains(text(), 'Welcome')]"),
-                                 (By.XPATH, "//div[contains(text(), 'Welcome')]"),
-                                 # Oracle Cloud specific indicators
-                                 (By.CSS_SELECTOR, "[id*='Fnd']"),
-                                 (By.CSS_SELECTOR, "[class*='Fnd']"),
-                                 (By.XPATH, "//div[contains(@id, 'Fnd')]"),
-                                 (By.XPATH, "//span[contains(@id, 'Fnd')]"),
-                                 # Check for Oracle Cloud navigation elements
-                                 (By.CSS_SELECTOR, "[id*='navigation']"),
-                                 (By.CSS_SELECTOR, "[class*='navigation']"),
-                                 (By.XPATH, "//div[contains(@class, 'navigation')]"),
-                                 # Check for Oracle Cloud menu elements
-                                 (By.CSS_SELECTOR, "[id*='menu']"),
-                                 (By.CSS_SELECTOR, "[class*='menu']"),
-                                 (By.XPATH, "//div[contains(@class, 'menu')]"),
-                                 # Check for any Oracle Cloud specific content
-                                 (By.XPATH, "//div[contains(@class, 'oracle')]"),
-                                 (By.XPATH, "//span[contains(@class, 'oracle')]"),
-                                 # Check for page content that indicates successful login
-                                 (By.XPATH, "//div[contains(@id, 'content')]"),
-                                 (By.XPATH, "//div[contains(@class, 'content')]")
-                            ]
-                            
-                            # First, check if we're still on a login page (which would indicate failure)
-                            current_url = driver.current_url
-                            page_title = driver.title
-                            
-                            # Check if we're still on login page
-                            if "login" in current_url.lower() or "connexion" in page_title.lower():
-                                st.sidebar.error("❌ Still on login page - credentials may be invalid")
-                                return
-                            
-                            # Check if we successfully navigated to Oracle Cloud
-                            if "iabbzv-dev" in current_url and "hcmUI" in current_url:
-                                 st.sidebar.info("✅ Successfully navigated to Oracle Cloud!")
-                                 
-                                 # Try to find any Oracle Cloud specific elements
-                                 login_successful = False
-                                 for indicator_type, indicator_value in success_indicators:
-                                     try:
-                                         WebDriverWait(driver, 3).until(
-                                             EC.presence_of_element_located((indicator_type, indicator_value))
-                                         )
-                                         st.sidebar.info(f"✅ Found Oracle Cloud element: {indicator_type}={indicator_value}")
-                                         login_successful = True
-                                         break
-                                     except:
-                                         continue
-                                 
-                                 # If we can't find specific elements but URL is correct, still consider it successful
-                                 if not login_successful:
-                                     st.sidebar.info("✅ Login appears successful (correct URL, no login page)")
-                                     login_successful = True
-                            else:
-                                login_successful = False
-                            
-                            if login_successful:
-                                st.sidebar.success("✅ Connection successful!")
-                                st.sidebar.info(f"Connected to {environment.upper()} environment")
-                            else:
-                                # Check for error messages
-                                error_selectors = [
-                                    (By.CSS_SELECTOR, ".error"),
-                                    (By.CSS_SELECTOR, ".alert"),
-                                    (By.CSS_SELECTOR, "[class*='error']"),
-                                    (By.CSS_SELECTOR, "[class*='alert']"),
-                                    (By.XPATH, "//span[contains(@class, 'error')]"),
-                                    (By.XPATH, "//div[contains(@class, 'error')]")
-                                ]
-                                
-                                error_found = False
-                                for error_type, error_value in error_selectors:
-                                    try:
-                                        error_elements = driver.find_elements(error_type, error_value)
-                                        if error_elements:
-                                            error_text = error_elements[0].text.strip()
-                                            if error_text:
-                                                st.sidebar.error(f"❌ Connection failed: {error_text}")
-                                                error_found = True
-                                                break
-                                    except:
-                                        continue
-                                
-                                if not error_found:
-                                    st.sidebar.error("❌ Connection failed: Invalid credentials or environment")
-                                    st.sidebar.info("🔍 Debug: No specific error message found")
-                        
-                        except Exception as login_error:
-                            st.sidebar.error(f"❌ Login process error: {str(login_error)}")
+                                                 # Check if login was successful
+                         current_url = driver.current_url
+                         
+                         # Simple check: if we're still on login page, it failed
+                         if "login" in current_url.lower() or "connexion" in driver.title.lower():
+                             st.sidebar.error("❌ Connection failed: Invalid credentials")
+                         # If we're on Oracle Cloud page, it succeeded
+                         elif "iabbzv-dev" in current_url and "hcmUI" in current_url:
+                             st.sidebar.success("✅ Connected successfully!")
+                         else:
+                             st.sidebar.error("❌ Connection failed: Invalid environment")
                     
                     finally:
                         driver.quit()
                         
-                except Exception as e:
-                    st.sidebar.error(f"❌ Connection test failed: {str(e)}")
+                                 except Exception as e:
+                     st.sidebar.error("❌ Connection failed: System error")
     
     # Save credentials and environment to environment variables
     if username and password:
