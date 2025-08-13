@@ -163,12 +163,13 @@ def main():
                     # Debug: Print the URL being used
                     st.sidebar.info(f"🔍 Testing URL: {security_console_url}")
                     
-                    # Initialize driver with optimized settings
+                    # Initialize driver with robust settings
                     status_text.text("🔄 Initializing ChromeDriver...")
                     progress_bar.progress(10)
                     try:
-                        service = Service(ChromeDriverManager().install())
-                        driver = webdriver.Chrome(service=service, options=options)
+                        # Use our robust ChromeDriver initialization
+                        from chromedriver_fix import initialize_driver_robust
+                        driver = initialize_driver_robust()
                         st.sidebar.info("✅ ChromeDriver initialized successfully")
                         progress_bar.progress(20)
                     except Exception as driver_error:
