@@ -44,8 +44,9 @@ privilege_input.xlsx
 # Screenshots (error debugging)
 error_row_*.png
 
-# Backup folder
+# Backup folders
 backup_scripts/
+backup_useful_files/
 
 # Sample templates folder (generated files)
 sample_templates/
@@ -54,10 +55,11 @@ sample_templates/
 AVEC APP SAVING VERSION/
 OLD SANS APP/
 
-# Documentation files (optional - you can include these if you want)
+# Documentation files (moved to backup)
 *.docx
 *.mp4
 *.mp3
+*.xml
 
 # Jupyter notebooks (development files)
 *.ipynb
@@ -66,15 +68,16 @@ OLD SANS APP/
 Conversion_*.xlsx
 Conversion_*.xml
 
-# Testing and diagnostic files (TEMPORARILY ALLOWED FOR TESTING)
-# test_*.py
-# *_test.py
-# test_*.py
-# *_test_*.py
-# diagnose_chromedriver.py
-# CHROMEDRIVER_TROUBLESHOOTING.md
-# DEPLOYMENT_GUIDE.md
-# CHROMEDRIVER_FIX_GUIDE.md
+# Testing and diagnostic files (EXCLUDED FOR PRODUCTION)
+test_*.py
+*_test.py
+test_*.py
+*_test_*.py
+diagnose_chromedriver.py
+CHROMEDRIVER_TROUBLESHOOTING.md
+DEPLOYMENT_GUIDE.md
+CHROMEDRIVER_FIX_GUIDE.md
+DEPLOYMENT_CHECKLIST.md
 
 # Development and debugging files
 debug_*.py
@@ -115,6 +118,10 @@ chromedriver*
 # OS generated files
 ehthumbs.db
 Icon?
+
+# Setup and utility files (not needed in production)
+setup_env.py
+update_automation_scripts.py
 
 # Streamlit specific (keep these for deployment)
 # .streamlit/config.toml - KEEP THIS
