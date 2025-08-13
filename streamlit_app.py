@@ -95,8 +95,8 @@ def main():
     st.sidebar.title("Navigation")
     page = st.sidebar.selectbox(
         "Choose Operation",
-        ["🏠 Home", "➕ Create Role", "📋 Copy Role", "👥 Duty Role Management", "🔑 Privilege Management", "📊 Results"],
-        index=["🏠 Home", "➕ Create Role", "📋 Copy Role", "👥 Duty Role Management", "🔑 Privilege Management", "📊 Results"].index(st.session_state.current_page)
+        ["🏠 Home", "➕ Create Role", "📋 Copy Role", "👥 Duty Role Management", "🔑 Privilege Management", "🔧 Diagnostics", "📊 Results"],
+        index=["🏠 Home", "➕ Create Role", "📋 Copy Role", "👥 Duty Role Management", "🔑 Privilege Management", "🔧 Diagnostics", "📊 Results"].index(st.session_state.current_page)
     )
     
     # Update session state when sidebar selection changes
@@ -410,6 +410,10 @@ def main():
     elif st.session_state.current_page == "🔑 Privilege Management":
         show_privilege_management_page()
     
+    # Diagnostics page
+    elif st.session_state.current_page == "🔧 Diagnostics":
+        show_diagnostics_page()
+    
     # Results page
     elif st.session_state.current_page == "📊 Results":
         show_results_page()
@@ -495,6 +499,40 @@ def show_home_page():
             </ul>
         </div>
         """, unsafe_allow_html=True)
+    
+    # Diagnostics Card - Clickable
+    if st.button("🔧 Diagnostics", key="home_diagnostics", use_container_width=True):
+        st.session_state.current_page = "🔧 Diagnostics"
+        st.rerun()
+    
+    st.markdown("""
+    <div class="feature-card" style="margin-top: 10px;">
+        <h3>🔧 Diagnostics</h3>
+        <p>Diagnose ChromeDriver and system issues. Test connections and troubleshoot deployment problems.</p>
+        <ul>
+            <li>System diagnostics</li>
+            <li>ChromeDriver testing</li>
+            <li>Connection troubleshooting</li>
+        </ul>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # Diagnostics Card - Clickable
+    if st.button("🔧 Diagnostics", key="home_diagnostics", use_container_width=True):
+        st.session_state.current_page = "🔧 Diagnostics"
+        st.rerun()
+    
+    st.markdown("""
+    <div class="feature-card" style="margin-top: 10px;">
+        <h3>🔧 Diagnostics</h3>
+        <p>Diagnose ChromeDriver and system issues. Test connections and troubleshoot deployment problems.</p>
+        <ul>
+            <li>System diagnostics</li>
+            <li>ChromeDriver testing</li>
+            <li>Connection troubleshooting</li>
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
     
     # System Status
     st.markdown("---")
@@ -867,6 +905,151 @@ def show_privilege_management_page():
         
         except Exception as e:
             st.error(f"❌ Error reading file: {str(e)}")
+
+def show_diagnostics_page():
+    # Back to Home button
+    if st.button("🏠 Back to Home", key="diagnostics_back"):
+        st.session_state.current_page = "🏠 Home"
+        st.rerun()
+    
+    st.header("🔧 System Diagnostics")
+    
+    st.markdown("""
+    <div class="info-message">
+        <strong>Purpose:</strong> This page helps diagnose ChromeDriver and system issues on Streamlit Cloud deployment.
+        Run diagnostics to understand what's happening with the ChromeDriver setup.
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Run diagnostics button
+    if st.button("🔍 Run System Diagnostics", key="run_diagnostics"):
+        with st.spinner("Running diagnostics..."):
+            try:
+                # Capture diagnostic output
+                import subprocess
+                import sys
+                import io
+                
+                # Redirect stdout to capture output
+                old_stdout = sys.stdout
+                new_stdout = io.StringIO()
+                sys.stdout = new_stdout
+                
+                try:
+                    # Import and run diagnostics
+                    from diagnose_chromedriver import main as run_diagnostics
+                    run_diagnostics()
+                    
+                    # Get the output
+                    diagnostic_output = new_stdout.getvalue()
+                    
+                    # Display results
+                    st.subheader("📊 Diagnostic Results")
+                    st.code(diagnostic_output, language="text")
+                    
+                    # Save diagnostic results
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    diagnostic_file = f"diagnostic_results_{timestamp}.txt"
+                    
+                    with open(diagnostic_file, 'w') as f:
+                        f.write(diagnostic_output)
+                    
+                    st.success(f"✅ Diagnostics completed! Results saved to {diagnostic_file}")
+                    
+                    # Download button for diagnostic results
+                    st.download_button(
+                        label="📥 Download Diagnostic Results",
+                        data=diagnostic_output,
+                        file_name=diagnostic_file,
+                        mime="text/plain"
+                    )
+                    
+                finally:
+                    # Restore stdout
+                    sys.stdout = old_stdout
+                    
+            except Exception as e:
+                st.error(f"❌ Error running diagnostics: {str(e)}")
+                st.error("This might indicate that the diagnostic script is not available or has issues.")
+    
+    # ChromeDriver test button
+    st.markdown("---")
+    st.subheader("🧪 ChromeDriver Test")
+    
+    if st.button("🚀 Test ChromeDriver Initialization", key="test_chromedriver"):
+        with st.spinner("Testing ChromeDriver..."):
+            try:
+                # Import and test ChromeDriver
+                from chromedriver_fix import test_chromedriver
+                
+                # Capture output
+                import io
+                import sys
+                old_stdout = sys.stdout
+                new_stdout = io.StringIO()
+                sys.stdout = new_stdout
+                
+                try:
+                    success = test_chromedriver()
+                    
+                    # Get the output
+                    test_output = new_stdout.getvalue()
+                    
+                    # Display results
+                    st.subheader("📊 ChromeDriver Test Results")
+                    st.code(test_output, language="text")
+                    
+                    if success:
+                        st.success("✅ ChromeDriver test passed!")
+                    else:
+                        st.error("❌ ChromeDriver test failed!")
+                        
+                finally:
+                    # Restore stdout
+                    sys.stdout = old_stdout
+                    
+            except Exception as e:
+                st.error(f"❌ Error testing ChromeDriver: {str(e)}")
+    
+    # Manual ChromeDriver download test
+    st.markdown("---")
+    st.subheader("📥 Manual ChromeDriver Download Test")
+    
+    chrome_version = st.text_input("Chrome Version (e.g., 120.0.6099.224)", value="120.0.6099.224")
+    
+    if st.button("🔍 Test ChromeDriver Download", key="test_download"):
+        with st.spinner("Testing ChromeDriver download..."):
+            try:
+                from chromedriver_fix import download_chromedriver_for_version
+                
+                # Capture output
+                import io
+                import sys
+                old_stdout = sys.stdout
+                new_stdout = io.StringIO()
+                sys.stdout = new_stdout
+                
+                try:
+                    chromedriver_path = download_chromedriver_for_version(chrome_version)
+                    
+                    # Get the output
+                    download_output = new_stdout.getvalue()
+                    
+                    # Display results
+                    st.subheader("📊 Download Test Results")
+                    st.code(download_output, language="text")
+                    
+                    if chromedriver_path:
+                        st.success(f"✅ ChromeDriver downloaded successfully to: {chromedriver_path}")
+                    else:
+                        st.error("❌ ChromeDriver download failed!")
+                        
+                finally:
+                    # Restore stdout
+                    sys.stdout = old_stdout
+                    
+            except Exception as e:
+                st.error(f"❌ Error testing download: {str(e)}")
 
 def show_results_page():
     # Back to Home button

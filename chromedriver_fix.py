@@ -12,39 +12,39 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import WebDriverException
+import tempfile
+import zipfile
+import requests
+import re
 
 def get_chrome_version():
     """Get the installed Chrome version"""
     try:
         if platform.system() == "Linux":
             # Try multiple ways to get Chrome version on Linux
-            try:
-                result = subprocess.run(['chromium', '--version'], 
-                                      capture_output=True, text=True, timeout=10)
-                if result.returncode == 0:
-                    version = result.stdout.strip().split()[-1]
-                    return version
-            except:
-                pass
+            commands = [
+                ['chromium', '--version'],
+                ['google-chrome', '--version'],
+                ['chrome', '--version'],
+                ['chromium-browser', '--version']
+            ]
             
-            try:
-                result = subprocess.run(['google-chrome', '--version'], 
-                                      capture_output=True, text=True, timeout=10)
-                if result.returncode == 0:
-                    version = result.stdout.strip().split()[-1]
-                    return version
-            except:
-                pass
-                
-            try:
-                result = subprocess.run(['chrome', '--version'], 
-                                      capture_output=True, text=True, timeout=10)
-                if result.returncode == 0:
-                    version = result.stdout.strip().split()[-1]
-                    return version
-            except:
-                pass
-                
+            for cmd in commands:
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                    if result.returncode == 0:
+                        # Extract version number using regex
+                        version_match = re.search(r'(\d+\.\d+\.\d+\.\d+)', result.stdout)
+                        if version_match:
+                            return version_match.group(1)
+                        # Fallback: try to get the last number sequence
+                        parts = result.stdout.strip().split()
+                        for part in reversed(parts):
+                            if re.match(r'^\d+\.\d+\.\d+\.\d+$', part):
+                                return part
+                except:
+                    continue
+                    
         elif platform.system() == "Windows":
             # Windows Chrome version detection
             try:
@@ -66,8 +66,9 @@ def get_chrome_version():
                                        '--version'], 
                                       capture_output=True, text=True, timeout=10)
                 if result.returncode == 0:
-                    version = result.stdout.strip().split()[-1]
-                    return version
+                    version_match = re.search(r'(\d+\.\d+\.\d+\.\d+)', result.stdout)
+                    if version_match:
+                        return version_match.group(1)
             except:
                 pass
                 
@@ -87,10 +88,55 @@ def get_chromedriver_version(driver_path=None):
                                   capture_output=True, text=True, timeout=10)
         
         if result.returncode == 0:
-            version = result.stdout.strip().split()[1]
-            return version
+            version_match = re.search(r'ChromeDriver (\d+\.\d+\.\d+\.\d+)', result.stdout)
+            if version_match:
+                return version_match.group(1)
     except Exception as e:
         print(f"⚠️ Could not detect ChromeDriver version: {e}")
+    
+    return None
+
+def download_chromedriver_for_version(chrome_version):
+    """Download ChromeDriver for a specific Chrome version"""
+    try:
+        major_version = chrome_version.split('.')[0]
+        print(f"🎯 Attempting to download ChromeDriver for Chrome version {major_version}")
+        
+        # Try to get the latest compatible version
+        latest_url = f"https://chromedriver.storage.googleapis.com/LATEST_RELEASE_{major_version}"
+        response = requests.get(latest_url, timeout=10)
+        
+        if response.status_code == 200:
+            chromedriver_version = response.text.strip()
+            print(f"📥 Found ChromeDriver version: {chromedriver_version}")
+            
+            # Download the appropriate version for Linux
+            download_url = f"https://chromedriver.storage.googleapis.com/{chromedriver_version}/chromedriver_linux64.zip"
+            
+            temp_dir = tempfile.mkdtemp()
+            chromedriver_path = os.path.join(temp_dir, "chromedriver")
+            zip_path = os.path.join(temp_dir, "chromedriver.zip")
+            
+            print(f"📥 Downloading from: {download_url}")
+            response = requests.get(download_url, timeout=30)
+            
+            if response.status_code == 200:
+                with open(zip_path, 'wb') as f:
+                    f.write(response.content)
+                
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(temp_dir)
+                
+                os.chmod(chromedriver_path, 0o755)
+                print(f"✅ ChromeDriver downloaded and extracted to: {chromedriver_path}")
+                return chromedriver_path
+            else:
+                print(f"❌ Failed to download ChromeDriver: HTTP {response.status_code}")
+        else:
+            print(f"❌ Failed to get latest version: HTTP {response.status_code}")
+            
+    except Exception as e:
+        print(f"❌ Error downloading ChromeDriver: {e}")
     
     return None
 
@@ -128,10 +174,24 @@ def initialize_driver_robust():
         "profile.default_content_setting_values.notifications": 2,
         "profile.default_content_settings.popups": 0
     })
-    
-    # Strategy 1: Use webdriver-manager with specific version matching
+
+    # Strategy 1: Manual ChromeDriver download for specific version
+    if chrome_version:
+        try:
+            print("🔄 Strategy 1: Manual ChromeDriver download for specific version...")
+            chromedriver_path = download_chromedriver_for_version(chrome_version)
+            if chromedriver_path:
+                service = Service(chromedriver_path)
+                driver = webdriver.Chrome(service=service, options=options)
+                print(f"✅ ChromeDriver initialized with manual download for Chrome {chrome_version}")
+                driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+                return driver
+        except Exception as e:
+            print(f"⚠️ Strategy 1 failed: {e}")
+
+    # Strategy 2: Use webdriver-manager with specific version matching
     try:
-        print("🔄 Strategy 1: Using webdriver-manager with version matching...")
+        print("🔄 Strategy 2: Using webdriver-manager with version matching...")
         
         # If we detected Chrome version, try to match it
         if chrome_version:
@@ -156,9 +216,9 @@ def initialize_driver_robust():
         return driver
         
     except Exception as e:
-        print(f"⚠️ Strategy 1 failed: {e}")
+        print(f"⚠️ Strategy 2 failed: {e}")
     
-    # Strategy 2: Use system Chrome with specific binary paths
+    # Strategy 3: Use system Chrome with specific binary paths
     binary_paths = [
         "/usr/bin/chromium",
         "/usr/bin/google-chrome",
@@ -168,7 +228,7 @@ def initialize_driver_robust():
     
     for binary_path in binary_paths:
         try:
-            print(f"🔄 Strategy 2: Trying system Chrome with binary: {binary_path}")
+            print(f"🔄 Strategy 3: Trying system Chrome with binary: {binary_path}")
             options.binary_location = binary_path
             driver = webdriver.Chrome(options=options)
             print(f"✅ Chrome initialized with binary: {binary_path}")
@@ -178,61 +238,14 @@ def initialize_driver_robust():
             print(f"⚠️ Binary {binary_path} failed: {e}")
             continue
     
-    # Strategy 3: Use system Chrome without specifying binary
+    # Strategy 4: Use system Chrome without specifying binary
     try:
-        print("🔄 Strategy 3: Trying system Chrome without binary specification...")
+        print("🔄 Strategy 4: Trying system Chrome without binary specification...")
         options.binary_location = None
         driver = webdriver.Chrome(options=options)
         print("✅ Chrome initialized without binary specification")
         driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         return driver
-    except Exception as e:
-        print(f"⚠️ Strategy 3 failed: {e}")
-    
-    # Strategy 4: Manual ChromeDriver download and setup
-    try:
-        print("🔄 Strategy 4: Manual ChromeDriver setup...")
-        
-        # Create a temporary ChromeDriver directory
-        import tempfile
-        import zipfile
-        import requests
-        
-        temp_dir = tempfile.mkdtemp()
-        chromedriver_path = os.path.join(temp_dir, "chromedriver")
-        
-        # Download appropriate ChromeDriver version
-        if chrome_version:
-            major_version = chrome_version.split('.')[0]
-            download_url = f"https://chromedriver.storage.googleapis.com/LATEST_RELEASE_{major_version}"
-            
-            try:
-                response = requests.get(download_url, timeout=10)
-                if response.status_code == 200:
-                    chromedriver_version = response.text.strip()
-                    download_url = f"https://chromedriver.storage.googleapis.com/{chromedriver_version}/chromedriver_linux64.zip"
-                    
-                    print(f"📥 Downloading ChromeDriver {chromedriver_version}...")
-                    response = requests.get(download_url, timeout=30)
-                    
-                    if response.status_code == 200:
-                        zip_path = os.path.join(temp_dir, "chromedriver.zip")
-                        with open(zip_path, 'wb') as f:
-                            f.write(response.content)
-                        
-                        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                            zip_ref.extractall(temp_dir)
-                        
-                        os.chmod(chromedriver_path, 0o755)
-                        
-                        service = Service(chromedriver_path)
-                        driver = webdriver.Chrome(service=service, options=options)
-                        print(f"✅ ChromeDriver initialized with manual download (version {chromedriver_version})")
-                        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-                        return driver
-            except Exception as e:
-                print(f"⚠️ Manual download failed: {e}")
-        
     except Exception as e:
         print(f"⚠️ Strategy 4 failed: {e}")
     

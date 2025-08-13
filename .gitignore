@@ -65,3 +65,58 @@ OLD SANS APP/
 # Conversion files (user data)
 Conversion_*.xlsx
 Conversion_*.xml
+
+# Testing and diagnostic files (TEMPORARILY ALLOWED FOR TESTING)
+# test_*.py
+# *_test.py
+# test_*.py
+# *_test_*.py
+# diagnose_chromedriver.py
+# CHROMEDRIVER_TROUBLESHOOTING.md
+# DEPLOYMENT_GUIDE.md
+# CHROMEDRIVER_FIX_GUIDE.md
+
+# Development and debugging files
+debug_*.py
+*_debug.py
+debug_*.log
+*_debug.log
+
+# Temporary diagnostic results
+diagnostic_results_*.txt
+test_results_*.txt
+
+# Local development files
+local_*.py
+dev_*.py
+development_*.py
+
+# Backup and temporary files
+*.bak
+*.backup
+*_backup.*
+temp_*
+tmp_*
+
+# ChromeDriver files (will be downloaded automatically)
+chromedriver*
+*.exe
+
+# Large files that shouldn't be in repo
+*.zip
+*.tar.gz
+*.rar
+
+# IDE and editor files
+*.sublime-*
+*.vim
+*~
+
+# OS generated files
+ehthumbs.db
+Icon?
+
+# Streamlit specific (keep these for deployment)
+# .streamlit/config.toml - KEEP THIS
+# requirements.txt - KEEP THIS  
+# packages.txt - KEEP THIS
