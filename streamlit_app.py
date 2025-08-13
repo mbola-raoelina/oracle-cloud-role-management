@@ -514,23 +514,6 @@ def show_home_page():
             <li>ChromeDriver testing</li>
             <li>Connection troubleshooting</li>
         </ul>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    # Diagnostics Card - Clickable
-    if st.button("🔧 Diagnostics", key="home_diagnostics", use_container_width=True):
-        st.session_state.current_page = "🔧 Diagnostics"
-        st.rerun()
-    
-    st.markdown("""
-    <div class="feature-card" style="margin-top: 10px;">
-        <h3>🔧 Diagnostics</h3>
-        <p>Diagnose ChromeDriver and system issues. Test connections and troubleshoot deployment problems.</p>
-        <ul>
-            <li>System diagnostics</li>
-            <li>ChromeDriver testing</li>
-            <li>Connection troubleshooting</li>
-        </ul>
     </div>
     """, unsafe_allow_html=True)
     
