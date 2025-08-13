@@ -1,0 +1,58 @@
+# Environment variables
+.env
+
+# Python virtual environment
+mon_env/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Excel input files (user data)
+*_input.xlsx
+role_create_input.xlsx
+role_copy_input.xlsx
+duty_role_input.xlsx
+privilege_input.xlsx
+
+# Progress and result files (generated during runtime)
+*_progress.xlsx
+*_results_*.xlsx
+*_partial_*.xlsx
+
+# Screenshots (error debugging)
+error_row_*.png
+
+# Backup folder
+backup_scripts/
+
+# Old versions
+AVEC APP SAVING VERSION/
+OLD SANS APP/
+
+# Documentation files (optional - you can include these if you want)
+*.docx
+*.mp4
+*.mp3
+*.txt
