@@ -36,7 +36,7 @@ SECURITY_CONSOLE_URL = get_security_console_url()
 
 
 def initialize_driver():
-    """Initialize Chrome WebDriver with ChromeDriverManager and headless mode"""
+    """Initialize Chrome WebDriver with system Chrome for Streamlit Cloud deployment"""
     options = webdriver.ChromeOptions()
     # Headless mode for better user experience
     options.add_argument("--headless")
@@ -57,49 +57,24 @@ def initialize_driver():
         "profile.default_content_settings.popups": 0
     })
 
-    # Try multiple ChromeDriverManager strategies
+    # For Streamlit Cloud deployment, use system Chrome
     try:
-        # Strategy 1: Try standard ChromeDriverManager
-        print("🔄 Trying standard ChromeDriverManager...")
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=options)
-        print("✅ ChromeDriver initialized with standard ChromeDriverManager")
-    except Exception as e1:
-        print(f"⚠️ Standard ChromeDriverManager failed: {e1}")
+        print("🔄 Initializing Chrome with system installation...")
+        driver = webdriver.Chrome(options=options)
+        print("✅ Chrome initialized successfully")
+        return driver
+    except Exception as e:
+        print(f"⚠️ System Chrome failed: {e}")
         try:
-            # Strategy 2: Try clearing cache manually and retry
-            print("🔄 Trying to clear cache and retry...")
-            import shutil
-            import os
-            cache_dir = os.path.expanduser("~/.wdm")
-            if os.path.exists(cache_dir):
-                shutil.rmtree(cache_dir)
-                print("✅ Cache cleared manually")
-            
+            # Fallback to ChromeDriverManager
+            print("🔄 Trying ChromeDriverManager as fallback...")
             service = Service(ChromeDriverManager().install())
             driver = webdriver.Chrome(service=service, options=options)
-            print("✅ ChromeDriver initialized after cache clear")
+            print("✅ ChromeDriver initialized with ChromeDriverManager")
+            return driver
         except Exception as e2:
-            print(f"⚠️ Cache clear approach failed: {e2}")
-            try:
-                # Strategy 3: Try with latest webdriver-manager
-                print("🔄 Trying to update webdriver-manager and retry...")
-                import subprocess
-                subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "webdriver-manager"], 
-                             capture_output=True, text=True)
-                
-                service = Service(ChromeDriverManager().install())
-                driver = webdriver.Chrome(service=service, options=options)
-                print("✅ ChromeDriver initialized after webdriver-manager update")
-            except Exception as e3:
-                print(f"⚠️ WebDriver manager update approach failed: {e3}")
-                print("❌ All automated ChromeDriver strategies failed")
-                print("💡 Manual steps required:")
-                print("   1. Download ChromeDriver for Chrome 139 from:")
-                print("      https://chromedriver.chromium.org/downloads")
-                print("   2. Extract to a folder and update CHROME_DRIVER_PATH in the script")
-                print("   3. Or try: pip install --upgrade webdriver-manager")
-                raise
+            print(f"❌ All Chrome initialization strategies failed: {e2}")
+            raise
 
     # Execute script to remove webdriver property
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
