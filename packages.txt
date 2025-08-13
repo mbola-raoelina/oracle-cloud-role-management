@@ -1,0 +1,4 @@
+# System dependencies for Chrome and Selenium
+chromium-browser
+chromium-chromedriver
+xvfb

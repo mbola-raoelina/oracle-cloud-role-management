@@ -47,6 +47,9 @@ error_row_*.png
 # Backup folder
 backup_scripts/
 
+# Sample templates folder (generated files)
+sample_templates/
+
 # Old versions
 AVEC APP SAVING VERSION/
 OLD SANS APP/
@@ -55,4 +58,10 @@ OLD SANS APP/
 *.docx
 *.mp4
 *.mp3
-*.txt
+
+# Jupyter notebooks (development files)
+*.ipynb
+
+# Conversion files (user data)
+Conversion_*.xlsx
+Conversion_*.xml
