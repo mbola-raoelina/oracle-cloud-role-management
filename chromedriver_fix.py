@@ -175,19 +175,16 @@ def initialize_driver_robust():
         "profile.default_content_settings.popups": 0
     })
 
-    # Strategy 1: Manual ChromeDriver download for specific version
-    if chrome_version:
-        try:
-            print("🔄 Strategy 1: Manual ChromeDriver download for specific version...")
-            chromedriver_path = download_chromedriver_for_version(chrome_version)
-            if chromedriver_path:
-                service = Service(chromedriver_path)
-                driver = webdriver.Chrome(service=service, options=options)
-                print(f"✅ ChromeDriver initialized with manual download for Chrome {chrome_version}")
-                driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-                return driver
-        except Exception as e:
-            print(f"⚠️ Strategy 1 failed: {e}")
+    # Strategy 1: Use webdriver-manager with latest version (FASTEST - currently working)
+    try:
+        print("🔄 Strategy 1: Using webdriver-manager with latest version...")
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=options)
+        print("✅ ChromeDriver initialized with webdriver-manager (latest)")
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        return driver
+    except Exception as e:
+        print(f"⚠️ Strategy 1 failed: {e}")
 
     # Strategy 2: Use webdriver-manager with specific version matching
     try:
@@ -208,17 +205,24 @@ def initialize_driver_robust():
             except Exception as e:
                 print(f"⚠️ Version-specific ChromeDriver failed: {e}")
         
-        # Fallback to latest ChromeDriver
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=options)
-        print("✅ ChromeDriver initialized with webdriver-manager (latest)")
-        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-        return driver
-        
     except Exception as e:
         print(f"⚠️ Strategy 2 failed: {e}")
+
+    # Strategy 3: Manual ChromeDriver download for specific version
+    if chrome_version:
+        try:
+            print("🔄 Strategy 3: Manual ChromeDriver download for specific version...")
+            chromedriver_path = download_chromedriver_for_version(chrome_version)
+            if chromedriver_path:
+                service = Service(chromedriver_path)
+                driver = webdriver.Chrome(service=service, options=options)
+                print(f"✅ ChromeDriver initialized with manual download for Chrome {chrome_version}")
+                driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+                return driver
+        except Exception as e:
+            print(f"⚠️ Strategy 3 failed: {e}")
     
-    # Strategy 3: Use system Chrome with specific binary paths
+    # Strategy 4: Use system Chrome with specific binary paths
     binary_paths = [
         "/usr/bin/chromium",
         "/usr/bin/google-chrome",
@@ -228,7 +232,7 @@ def initialize_driver_robust():
     
     for binary_path in binary_paths:
         try:
-            print(f"🔄 Strategy 3: Trying system Chrome with binary: {binary_path}")
+            print(f"🔄 Strategy 4: Trying system Chrome with binary: {binary_path}")
             options.binary_location = binary_path
             driver = webdriver.Chrome(options=options)
             print(f"✅ Chrome initialized with binary: {binary_path}")
@@ -238,20 +242,20 @@ def initialize_driver_robust():
             print(f"⚠️ Binary {binary_path} failed: {e}")
             continue
     
-    # Strategy 4: Use system Chrome without specifying binary
+    # Strategy 5: Use system Chrome without specifying binary
     try:
-        print("🔄 Strategy 4: Trying system Chrome without binary specification...")
+        print("🔄 Strategy 5: Trying system Chrome without binary specification...")
         options.binary_location = None
         driver = webdriver.Chrome(options=options)
         print("✅ Chrome initialized without binary specification")
         driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         return driver
     except Exception as e:
-        print(f"⚠️ Strategy 4 failed: {e}")
+        print(f"⚠️ Strategy 5 failed: {e}")
     
-    # Strategy 5: Last resort - try with minimal options
+    # Strategy 6: Last resort - try with minimal options
     try:
-        print("🔄 Strategy 5: Minimal Chrome options...")
+        print("🔄 Strategy 6: Minimal Chrome options...")
         minimal_options = webdriver.ChromeOptions()
         minimal_options.add_argument("--headless")
         minimal_options.add_argument("--no-sandbox")
@@ -262,7 +266,7 @@ def initialize_driver_robust():
         driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         return driver
     except Exception as e:
-        print(f"⚠️ Strategy 5 failed: {e}")
+        print(f"⚠️ Strategy 6 failed: {e}")
     
     raise Exception("❌ All ChromeDriver initialization strategies failed!")
 
