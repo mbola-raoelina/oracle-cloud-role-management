@@ -167,10 +167,6 @@ def initialize_driver_robust():
     options.add_argument("--disable-popup-blocking")
     options.add_argument("--disable-blink-features=AutomationControlled")
     
-    # Critical stability options for Streamlit Cloud
-    options.add_argument("--single-process")
-    options.add_argument("--memory-pressure-off")
-    
     # Additional options to reduce warnings
     options.add_argument("--disable-logging")
     options.add_argument("--disable-default-apps")
