@@ -151,7 +151,7 @@ def initialize_driver_robust():
     options = webdriver.ChromeOptions()
     
     # Essential options for Streamlit Cloud
-    options.add_argument("--headless")
+    #options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
@@ -166,6 +166,22 @@ def initialize_driver_robust():
     options.add_argument("--disable-images")
     options.add_argument("--disable-popup-blocking")
     options.add_argument("--disable-blink-features=AutomationControlled")
+    
+    # Additional options to reduce warnings
+    options.add_argument("--disable-logging")
+    options.add_argument("--disable-default-apps")
+    options.add_argument("--disable-sync")
+    options.add_argument("--disable-translate")
+    options.add_argument("--disable-component-update")
+    options.add_argument("--disable-background-networking")
+    options.add_argument("--disable-client-side-phishing-detection")
+    options.add_argument("--disable-hang-monitor")
+    options.add_argument("--disable-prompt-on-repost")
+    options.add_argument("--disable-domain-reliability")
+    options.add_argument("--disable-features=TranslateUI")
+    options.add_argument("--disable-ipc-flooding-protection")
+    options.add_argument("--log-level=3")
+    options.add_argument("--silent")
     
     # Anti-detection options
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
