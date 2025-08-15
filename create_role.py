@@ -77,11 +77,63 @@ def find_element_robust(driver, selectors_list, timeout=20, condition=EC.element
     
     raise Exception(f"❌ Element not found with any of {len(selectors_list)} selectors")
 
+def get_current_step_number(driver):
+    """Get the current step number from the navigation train"""
+    try:
+        # Look for the current step indicator (p_AFSelected class)
+        current_step = driver.find_element(By.XPATH, "//a[contains(@class, 'p_AFSelected') and contains(@title, 'Current')]")
+        title = current_step.get_attribute('title')
+        
+        # Extract step number from title like "Basic Information Step: Current"
+        if "Basic Information" in title:
+            return 1
+        elif "Function Security Policies" in title:
+            return 2
+        elif "Data Security Policies" in title:
+            return 3
+        elif "Role Hierarchy" in title:
+            return 4
+        elif "Segregation of Duties" in title:
+            return 5
+        elif "Users" in title:
+            return 6
+        elif "Summary" in title:
+            return 7
+        else:
+            return 0
+    except:
+        return 0
+
+def wait_for_step_transition(driver, expected_step, timeout=30):
+    """Wait for navigation to reach the expected step using train indicators"""
+    print(f"⏰ Waiting for transition to step {expected_step}...")
+    
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        current_step = get_current_step_number(driver)
+        if current_step == expected_step:
+            print(f"✅ Successfully navigated to step {expected_step}")
+            return True
+        elif current_step > expected_step:
+            print(f"⚠️ Overshot to step {current_step}, expected {expected_step}")
+            return True
+        
+        time.sleep(1)  # Check every second
+    
+    final_step = get_current_step_number(driver)
+    print(f"❌ Timeout waiting for step {expected_step}, currently at step {final_step}")
+    return False
+
 
 def click_next_button(driver, instance=1, max_retries=2):
     for attempt in range(max_retries):
         try:
             print(f"🔄 Attempting to click Next button (step {instance})")
+            
+            # Check current step before clicking
+            current_step = get_current_step_number(driver)
+            expected_next_step = current_step + 1
+            print(f"📍 Currently at step {current_step}, expecting to go to step {expected_next_step}")
             
             # Use robust element finding with multiple selectors
             next_btn = find_element_robust(driver, [
@@ -95,11 +147,32 @@ def click_next_button(driver, instance=1, max_retries=2):
             btn_id = next_btn.get_attribute('id')
             print(f"✅ Found Next button: {btn_id}")
             
+            # Wait for button to be clickable (not disabled)
+            WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.ID, btn_id))
+            )
+            print(f"✅ Next button is clickable")
+            
             # Click the button
             driver.execute_script("arguments[0].click();", next_btn)
             print(f"✓ Clicked Next button successfully")
-            time.sleep(2)  # Wait for page transition
-            return True
+            
+            # Use robust navigation train-based transition detection
+            if wait_for_step_transition(driver, expected_next_step, timeout=30):
+                print(f"✓ Step {instance} transition completed successfully")
+                return True
+            else:
+                # If train navigation failed, try one more time with longer wait
+                print("⚠️ Train navigation detection failed, trying extended wait...")
+                time.sleep(5)  # Give Oracle more time
+                
+                # Check again
+                final_step = get_current_step_number(driver)
+                if final_step >= expected_next_step:
+                    print(f"✓ Step {instance} transition completed (delayed)")
+                    return True
+                else:
+                    raise Exception(f"Navigation failed: still at step {final_step}, expected {expected_next_step}")
                 
         except StaleElementReferenceException:
             if attempt == max_retries - 1:
@@ -411,10 +484,26 @@ def main():
                     driver.save_screenshot("role_category_error.png")
                     raise
 
-                # Click through Next buttons
+                # Navigate through steps with robust train navigation
+                initial_step = get_current_step_number(driver)
+                print(f"📍 Starting navigation from step {initial_step}")
+                
                 for instance in range(1, 6):
-                    click_next_button(driver, instance=instance)
-                    time.sleep(3)
+                    current_step = get_current_step_number(driver)
+                    target_step = current_step + 1
+                    
+                    print(f"🔄 Navigating from step {current_step} to step {target_step} (iteration {instance}/5)")
+                    
+                    # Click Next button with robust navigation detection
+                    if click_next_button(driver, instance=instance):
+                        # Verify we actually moved to the next step
+                        final_step = get_current_step_number(driver)
+                        if final_step >= target_step:
+                            print(f"✓ Step {instance} completed successfully (now at step {final_step})")
+                        else:
+                            raise Exception(f"Navigation verification failed: clicked Next but still at step {final_step}, expected {target_step}")
+                    else:
+                        raise Exception(f"Failed to click Next button for step {instance}")
 
                 # Click Save and Close with robust element finding
                 print("🔄 Attempting to click Save button...")

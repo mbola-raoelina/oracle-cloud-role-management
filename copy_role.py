@@ -112,10 +112,62 @@ def find_element_robust(driver, selectors_list, timeout=20, condition=EC.element
     raise Exception(f"❌ Element not found with any of {len(selectors_list)} selectors")
 
 
+def get_current_step_number(driver):
+    """Get the current step number from the navigation train"""
+    try:
+        # Look for the current step indicator (p_AFSelected class)
+        current_step = driver.find_element(By.XPATH, "//a[contains(@class, 'p_AFSelected') and contains(@title, 'Current')]")
+        title = current_step.get_attribute('title')
+        
+        # Extract step number from title like "Basic Information Step: Current"
+        if "Basic Information" in title:
+            return 1
+        elif "Function Security Policies" in title:
+            return 2
+        elif "Data Security Policies" in title:
+            return 3
+        elif "Role Hierarchy" in title:
+            return 4
+        elif "Segregation of Duties" in title:
+            return 5
+        elif "Users" in title:
+            return 6
+        elif "Summary" in title:
+            return 7
+        else:
+            return 0
+    except:
+        return 0
+
+def wait_for_step_transition(driver, expected_step, timeout=30):
+    """Wait for navigation to reach the expected step using train indicators"""
+    print(f"⏰ Waiting for transition to step {expected_step}...")
+    
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        current_step = get_current_step_number(driver)
+        if current_step == expected_step:
+            print(f"✅ Successfully navigated to step {expected_step}")
+            return True
+        elif current_step > expected_step:
+            print(f"⚠️ Overshot to step {current_step}, expected {expected_step}")
+            return True
+        
+        time.sleep(1)  # Check every second
+    
+    final_step = get_current_step_number(driver)
+    print(f"❌ Timeout waiting for step {expected_step}, currently at step {final_step}")
+    return False
+
 def click_next_button(driver, instance=1, max_retries=2):
     for attempt in range(max_retries):
         try:
             print(f"🔄 Attempting to click Next button (step {instance})")
+            
+            # Check current step before clicking
+            current_step = get_current_step_number(driver)
+            expected_next_step = current_step + 1
+            print(f"📍 Currently at step {current_step}, expecting to go to step {expected_next_step}")
             
             # Use robust element finding with multiple selectors
             next_btn = find_element_robust(driver, [
@@ -129,11 +181,32 @@ def click_next_button(driver, instance=1, max_retries=2):
             btn_id = next_btn.get_attribute('id')
             print(f"✅ Found Next button: {btn_id}")
             
+            # Wait for button to be clickable (not disabled)
+            WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.ID, btn_id))
+            )
+            print(f"✅ Next button is clickable")
+            
             # Click the button
             driver.execute_script("arguments[0].click();", next_btn)
             print(f"✓ Clicked Next button successfully")
-            time.sleep(2)  # Wait for page transition
-            return True
+            
+            # Use robust navigation train-based transition detection
+            if wait_for_step_transition(driver, expected_next_step, timeout=30):
+                print(f"✓ Step {instance} transition completed successfully")
+                return True
+            else:
+                # If train navigation failed, try one more time with longer wait
+                print("⚠️ Train navigation detection failed, trying extended wait...")
+                time.sleep(5)  # Give Oracle more time
+                
+                # Check again
+                final_step = get_current_step_number(driver)
+                if final_step >= expected_next_step:
+                    print(f"✓ Step {instance} transition completed (delayed)")
+                    return True
+                else:
+                    raise Exception(f"Navigation failed: still at step {final_step}, expected {expected_next_step}")
                 
         except StaleElementReferenceException:
             if attempt == max_retries - 1:
@@ -404,25 +477,48 @@ def copy_existing_role(driver, role_name_to_copy, existing_role_code, new_role_n
     try:
         # [1] Search for existing role
         try:
+            # Get fresh search input element right before using it
             search_input = WebDriverWait(driver, 20).until(
                 EC.visibility_of_element_located((By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:_FOTr0:0:sp1:srchBox::content"))
             )
+            
             # Clear any previous value completely
             search_input.clear()
-            # Optionally, use JavaScript to clear the value:
-            driver.execute_script("arguments[0].value = '';", search_input)
             time.sleep(1)  # slight pause to let any dynamic content reset
 
             # Send the new search query
             search_input.send_keys(role_name_to_copy)
+            time.sleep(1)  # Brief pause to let Oracle register the input
+            
+            # PRESS ENTER to trigger the search
             search_input.send_keys(Keys.RETURN)
             
-            # Wait for search results to update (you might need a longer wait for subsequent rows)
-            WebDriverWait(driver, 20).until(
-                EC.presence_of_element_located((By.XPATH, "//tr[contains(@id, 'resList:0')]"))
-            )
-            print("✓ Search results loaded")
-            time.sleep(6)  # Allow time for results to stabilize
+            # Smart wait for search results - check if results appear quickly
+            print("⏰ Waiting for search results...")
+            start_time = time.time()
+            
+            # Use a shorter initial timeout with polling
+            try:
+                WebDriverWait(driver, 5).until(
+                    EC.presence_of_element_located((By.XPATH, "//tr[contains(@id, 'resList:0')]"))
+                )
+                elapsed = time.time() - start_time
+                print(f"✓ Search results loaded quickly ({elapsed:.1f}s)")
+                time.sleep(1)  # Short stabilization wait
+            except:
+                # If not loaded quickly, wait longer
+                print("⏰ Search taking longer, extending wait...")
+                try:
+                    WebDriverWait(driver, 25).until(
+                        EC.presence_of_element_located((By.XPATH, "//tr[contains(@id, 'resList:0')]"))
+                    )
+                    elapsed = time.time() - start_time
+                    print(f"✓ Search results loaded after extended wait ({elapsed:.1f}s)")
+                    time.sleep(3)  # Longer stabilization wait for slow loads
+                except:
+                    elapsed = time.time() - start_time
+                    print(f"❌ Search results failed to load after {elapsed:.1f}s")
+                    raise Exception("Search results did not appear within timeout")
         except Exception as e:
             print(f"🔴 Search failed: {str(e)}")
             raise
@@ -616,11 +712,25 @@ def copy_existing_role(driver, role_name_to_copy, existing_role_code, new_role_n
                         driver.save_screenshot(f"role_form_error_{int(time.time())}.png")
                         raise Exception("Role creation form did not load properly after copy confirmation")
             
-            # Clear and fill role name
-            role_name_field.clear()
-            time.sleep(1)
-            role_name_field.send_keys(new_role_name)
-            print(f"✓ Role name entered: {new_role_name}")
+            # Clear and fill role name (with duplicate prevention)
+            current_role_name = role_name_field.get_attribute('value')
+            print(f"🔍 Current role name value: '{current_role_name}'")
+             
+            if current_role_name != new_role_name:
+                print("🔄 Setting role name...")
+                role_name_field.clear()
+                time.sleep(1)
+                role_name_field.send_keys(new_role_name)
+                
+                # Verify role name was entered correctly
+                final_role_name = role_name_field.get_attribute('value')
+                if final_role_name == new_role_name:
+                    print(f"✓ Role name entered successfully: {new_role_name}")
+                else:
+                    print(f"⚠️ Role name verification failed. Expected: '{new_role_name}', Got: '{final_role_name}'")
+                    raise Exception("Role name entry failed")
+            else:
+                print(f"✓ Role name already set correctly: {new_role_name}")
 
             # Find and fill role code field with better handling for pre-filled values
             role_code_field = None
@@ -647,124 +757,166 @@ def copy_existing_role(driver, role_name_to_copy, existing_role_code, new_role_n
                         print(f"🔴 Could not find role code field: {str(e)}")
                         raise Exception("Role code field not found")
             
-            # Enhanced clearing and filling for role code field (handles pre-filled values and stale elements)
+            # Enhanced role code filling - handles pre-filled values and stale elements
             try:
-                print("🔄 Handling role code field with fresh element reference...")
+                print("🔄 Setting role code using enhanced approach...")
                 
-                # ALWAYS get a fresh element reference to avoid stale element issues
-                role_code_field = WebDriverWait(driver, 15).until(
+                # Get fresh element reference to avoid stale element issues
+                role_code_field = WebDriverWait(driver, 10).until(
                     EC.visibility_of_element_located((By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:1:biSp1:bIRCod::content"))
                 )
                 
-                # First, check if there's a pre-filled value
-                current_value = role_code_field.get_attribute('value')
-                print(f"🔍 Current role code value: '{current_value}'")
+                # Check current value
+                current_role_code = role_code_field.get_attribute('value')
+                print(f"🔍 Current role code value: '{current_role_code}'")
                 
-                # Method 1: JavaScript approach (most reliable for pre-filled values)
-                try:
-                    print("🔄 Trying JavaScript approach first...")
-                    driver.execute_script(f"arguments[0].value = '{new_role_code}';", role_code_field)
-                    time.sleep(0.5)
+                if current_role_code != new_role_code:
+                    print("🔄 Setting role code...")
                     
-                    # Trigger change event to ensure Oracle UI recognizes the change
-                    driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", role_code_field)
-                    time.sleep(0.5)
-                    
-                    # Verify the new value was entered
-                    js_value = role_code_field.get_attribute('value')
-                    print(f"🔍 After JavaScript, role code value: '{js_value}'")
-                    
-                    if js_value == new_role_code:
-                        print(f"✓ Role code successfully set via JavaScript: {new_role_code}")
-                    else:
-                        print(f"⚠️ JavaScript didn't work. Expected: '{new_role_code}', Got: '{js_value}'")
-                        raise Exception("JavaScript method failed")
-                        
-                except Exception as js_error:
-                    print(f"⚠️ JavaScript method failed: {str(js_error)}")
-                    
-                    # Method 2: Clear and fill approach
+                    # Method 1: JavaScript + ENTER (Primary)
                     try:
-                        print("🔄 Trying Clear + Fill approach...")
-                        # Get fresh element reference again
-                        role_code_field = WebDriverWait(driver, 10).until(
-                            EC.visibility_of_element_located((By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:1:biSp1:bIRCod::content"))
-                        )
+                        driver.execute_script(f"arguments[0].value = '{new_role_code}';", role_code_field)
+                        time.sleep(1)
                         
-                        # Clear the field completely
-                        role_code_field.clear()
-                        time.sleep(0.5)
+                        # Trigger change event to notify Oracle UI
+                        driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", role_code_field)
+                        time.sleep(1)
                         
-                        # Fill with new value
-                        role_code_field.send_keys(new_role_code)
-                        time.sleep(0.5)
+                        # PRESS ENTER to commit the change and prevent Oracle from reverting to default
+                        role_code_field.send_keys(Keys.ENTER)
+                        time.sleep(2) # Wait for Oracle to process the ENTER key
                         
-                        # Verify the new value was entered
-                        final_value = role_code_field.get_attribute('value')
-                        print(f"🔍 After Clear + Fill, role code value: '{final_value}'")
-                        
-                        if final_value == new_role_code:
-                            print(f"✓ Role code successfully entered via Clear + Fill: {new_role_code}")
+                        # Verify the change
+                        final_role_code = role_code_field.get_attribute('value')
+                        if final_role_code == new_role_code:
+                            print(f"✓ Role code set successfully via JavaScript + ENTER: {new_role_code}")
                         else:
-                            print(f"⚠️ Clear + Fill didn't work. Expected: '{new_role_code}', Got: '{final_value}'")
-                            raise Exception("Clear + Fill method failed")
-                            
-                    except Exception as clear_error:
-                        print(f"⚠️ Clear + Fill method failed: {str(clear_error)}")
+                            raise Exception("JavaScript + ENTER method failed")
+                    except Exception as js_error:
+                        print(f"⚠️ JavaScript + ENTER method failed: {str(js_error)}")
                         
-                        # Method 3: Select All + Type approach (final fallback)
+                        # Method 2: Clear + Send Keys (Fallback 1)
                         try:
-                            print("🔄 Trying Select All + Type approach...")
                             # Get fresh element reference again
                             role_code_field = WebDriverWait(driver, 10).until(
                                 EC.visibility_of_element_located((By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:1:biSp1:bIRCod::content"))
                             )
                             
-                            # Click to focus the field
-                            role_code_field.click()
-                            time.sleep(0.5)
+                            # Clear the field completely
+                            role_code_field.clear()
+                            time.sleep(1)
                             
-                            # Select all existing content (Ctrl+A)
-                            role_code_field.send_keys(Keys.CONTROL + "a")
-                            time.sleep(0.5)
-                            
-                            # Type the new role code (this will replace the selected content)
+                            # Fill with new value
                             role_code_field.send_keys(new_role_code)
-                            time.sleep(0.5)
+                            time.sleep(1)
                             
                             # Verify the new value was entered
-                            final_value = role_code_field.get_attribute('value')
-                            print(f"🔍 After Select All + Type, role code value: '{final_value}'")
-                            
-                            if final_value == new_role_code:
-                                print(f"✓ Role code successfully entered via Select All + Type: {new_role_code}")
+                            final_role_code = role_code_field.get_attribute('value')
+                            if final_role_code == new_role_code:
+                                print(f"✓ Role code set successfully via Clear + Send Keys: {new_role_code}")
                             else:
-                                print(f"⚠️ Select All + Type didn't work. Expected: '{new_role_code}', Got: '{final_value}'")
-                                raise Exception("Select All + Type method failed")
+                                raise Exception("Clear + Send Keys method failed")
+                        except Exception as clear_error:
+                            print(f"⚠️ Clear + Send Keys method failed: {str(clear_error)}")
+                            
+                            # Method 3: Select All + Type (Fallback 2)
+                            try:
+                                # Get fresh element reference again
+                                role_code_field = WebDriverWait(driver, 10).until(
+                                    EC.visibility_of_element_located((By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:1:biSp1:bIRCod::content"))
+                                )
                                 
-                        except Exception as select_all_error:
-                            print(f"⚠️ Select All + Type method failed: {str(select_all_error)}")
-                            raise Exception(f"All methods failed to set role code to '{new_role_code}'")
+                                # Click to focus the field
+                                role_code_field.click()
+                                time.sleep(1)
+                                
+                                # Select all existing content (Ctrl+A)
+                                role_code_field.send_keys(Keys.CONTROL + "a")
+                                time.sleep(1)
+                                
+                                # Type the new role code (this will replace the selected content)
+                                role_code_field.send_keys(new_role_code)
+                                time.sleep(1)
+                                
+                                # Verify the new value was entered
+                                final_role_code = role_code_field.get_attribute('value')
+                                if final_role_code == new_role_code:
+                                    print(f"✓ Role code set successfully via Select All + Type: {new_role_code}")
+                                else:
+                                    raise Exception("Select All + Type method failed")
+                            except Exception as select_error:
+                                print(f"🔴 All role code setting methods failed: {str(select_error)}")
+                                raise Exception(f"Role code setting failed. Expected: '{new_role_code}', Got: '{final_role_code}'")
+                else:
+                    print(f"✓ Role code already set correctly: {new_role_code}")
                     
-            except Exception as final_error:
-                print(f"🔴 All role code setting methods failed: {str(final_error)}")
-                raise Exception(f"Could not set role code to '{new_role_code}'")
-            
+            except Exception as e:
+                print(f"🔴 Role code setting failed: {str(e)}")
+                raise
+
             print("✓ New role details entered successfully")
+            
+            # Check for validation errors after role code entry
+            time.sleep(3)  # Wait for any validation to complete
+            try:
+                # Look for error messages
+                error_elements = driver.find_elements(By.XPATH, "//div[contains(@class, 'error') or contains(@class, 'Error')]")
+                if error_elements:
+                    for error in error_elements:
+                        error_text = error.text.strip()
+                        if error_text and "already exists" in error_text.lower():
+                            print(f"🔴 Validation error detected: {error_text}")
+                            raise Exception(f"Role code validation failed: {error_text}")
+                
+                # Also check for red borders on the role code field
+                role_code_field = WebDriverWait(driver, 5).until(
+                    EC.visibility_of_element_located((By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:1:biSp1:bIRCod::content"))
+                )
+                field_style = role_code_field.get_attribute('style')
+                if 'border-color: red' in field_style or 'border: 1px solid red' in field_style:
+                    print("🔴 Role code field has red border - validation error detected")
+                    raise Exception("Role code field validation error detected")
+                    
+            except Exception as validation_error:
+                print(f"⚠️ Validation check failed: {str(validation_error)}")
+                # Don't raise here, just log the warning
+                
         except Exception as e:
             print(f"🔴 Role details failed: {str(e)}")
             # Take a screenshot for debugging
             driver.save_screenshot(f"role_details_error_{int(time.time())}.png")
             raise
 
-        # [7] Navigate through steps
+        # [7] Navigate through steps with robust train navigation
         try:
+            initial_step = get_current_step_number(driver)
+            print(f"📍 Starting navigation from step {initial_step}")
+            
             for step in range(5):
-                click_next_button(driver)
-                print(f"✓ Step {step+1} completed")
-                time.sleep(2)
+                current_step = get_current_step_number(driver)
+                target_step = current_step + 1
+                
+                print(f"🔄 Navigating from step {current_step} to step {target_step} (iteration {step+1}/5)")
+                
+                # Verify we're at the expected step before clicking
+                if current_step != step + 1:
+                    print(f"⚠️ Navigation out of sync: expected to be at step {step + 1}, but at step {current_step}")
+                    # Continue anyway, but log the discrepancy
+                
+                # Click Next button with robust navigation detection
+                if click_next_button(driver, instance=step+1):
+                    # Verify we actually moved to the next step
+                    final_step = get_current_step_number(driver)
+                    if final_step >= target_step:
+                        print(f"✓ Step {step+1} completed successfully (now at step {final_step})")
+                    else:
+                        raise Exception(f"Navigation verification failed: clicked Next but still at step {final_step}, expected {target_step}")
+                else:
+                    raise Exception(f"Failed to click Next button for step {step+1}")
+                
         except Exception as e:
-            print(f"🔴 Navigation failed at step {step+1}: {str(e)}")
+            current_step = get_current_step_number(driver)
+            print(f"🔴 Navigation failed at iteration {step+1}, currently at step {current_step}: {str(e)}")
             raise
 
         # [8] Save with priority to Submit and Close
