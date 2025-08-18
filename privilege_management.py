@@ -41,6 +41,216 @@ def initialize_driver():
     return initialize_driver_robust()
 
 
+def check_for_oracle_popup_messages(driver, operation_context="operation"):
+    """
+    Check for Oracle warning/error popup messages and extract the message content
+    
+    Returns:
+        tuple: (has_popup: bool, message: str, popup_type: str)
+        - has_popup: Whether a popup was found
+        - message: The extracted message text
+        - popup_type: Type of popup (warning, error, info, etc.)
+    """
+    try:
+        # Check for popup container
+        popup_selectors = [
+            "div.AFPopupSelector[id*='popup-container']",
+            "div[id*='msgDlg']",
+            "div.p_AFWarning",
+            "div.p_AFError", 
+            "div.p_AFInfo"
+        ]
+        
+        popup_found = False
+        popup_element = None
+        
+        for selector in popup_selectors:
+            try:
+                popup_element = driver.find_element(By.CSS_SELECTOR, selector)
+                if popup_element.is_displayed():
+                    popup_found = True
+                    break
+            except:
+                continue
+        
+        if not popup_found:
+            return False, "", ""
+        
+        # Extract message content using multiple strategies
+        message_selectors = [
+            "div.x1mu",           # Primary Oracle message class from your example
+            "div.x1mw", 
+            "div.x1ml",
+            ".af_dialog_content",
+            "[class*='message']",
+            "td.x1n1 div",       # Alternative structure
+            "div[class*='mu']"    # Fallback for similar classes
+        ]
+        
+        message_text = ""
+        for msg_selector in message_selectors:
+            try:
+                message_elements = popup_element.find_elements(By.CSS_SELECTOR, msg_selector)
+                for element in message_elements:
+                    if element.is_displayed() and element.text.strip():
+                        message_text = element.text.strip()
+                        break
+                if message_text:
+                    break
+            except:
+                continue
+        
+        # Determine popup type based on classes
+        popup_type = "unknown"
+        try:
+            popup_classes = popup_element.get_attribute("class") or ""
+            if "p_AFWarning" in popup_classes or "warning" in popup_classes.lower():
+                popup_type = "warning"
+            elif "p_AFError" in popup_classes or "error" in popup_classes.lower():
+                popup_type = "error"
+            elif "p_AFInfo" in popup_classes or "info" in popup_classes.lower():
+                popup_type = "info"
+            else:
+                # Check for warning icon or text
+                if "warning" in message_text.lower() or popup_element.find_elements(By.CSS_SELECTOR, "img[src*='warning']"):
+                    popup_type = "warning"
+                elif "error" in message_text.lower():
+                    popup_type = "error"
+        except:
+            popup_type = "unknown"
+        
+        if not message_text:
+            message_text = f"Oracle popup detected during {operation_context} but message content could not be extracted"
+        
+        print(f"🔔 Oracle {popup_type} popup detected: {message_text}")
+        return True, message_text, popup_type
+        
+    except Exception as e:
+        print(f"⚠️ Error checking for Oracle popups: {str(e)}")
+        return False, "", ""
+
+
+def dismiss_oracle_popup(driver, popup_type="unknown"):
+    """
+    Dismiss Oracle popup by clicking OK, Cancel, or Close button
+    
+    Returns:
+        bool: Whether popup was successfully dismissed
+    """
+    try:
+        # Try multiple button selectors in order of preference
+        dismiss_selectors = [
+            "button[id*='::cancel']",           # Primary OK button from your example
+            "button[id*='msgDlg::cancel']",     # Specific msgDlg cancel
+            "a[id*='::close']",                 # Close link
+            "button:contains('OK')",             # Generic OK button
+            "button:contains('Cancel')",        # Generic Cancel button  
+            "button:contains('Close')",         # Generic Close button
+            "[onclick*='cancel']",              # Elements with cancel onclick
+            "button.xux",                       # Oracle button class from your example
+            "button[_afrpdo='cancel']"          # Oracle specific cancel attribute
+        ]
+        
+        for selector in dismiss_selectors:
+            try:
+                if ":contains(" in selector:
+                    # Handle contains selectors with XPath
+                    text = selector.split(":contains('")[1].split("')")[0]
+                    xpath_selector = f"//button[contains(text(), '{text}')]"
+                    buttons = driver.find_elements(By.XPATH, xpath_selector)
+                else:
+                    buttons = driver.find_elements(By.CSS_SELECTOR, selector)
+                
+                for button in buttons:
+                    try:
+                        if button.is_displayed() and button.is_enabled():
+                            driver.execute_script("arguments[0].click();", button)
+                            time.sleep(1)
+                            print(f"✅ Oracle popup dismissed using selector: {selector}")
+                            return True
+                    except:
+                        continue
+            except:
+                continue
+        
+        print(f"⚠️ Could not find dismissible button for Oracle popup")
+        return False
+        
+    except Exception as e:
+        print(f"❌ Error dismissing Oracle popup: {str(e)}")
+        return False
+
+
+def reset_browser_state(driver):
+    """
+    Aggressive browser state reset to prevent error cascade between rows
+    
+    This function performs comprehensive cleanup when an operation fails:
+    1. Close any open popups/dialogs
+    2. Navigate back to main page
+    3. Clear any form states
+    4. Verify we're in a clean state
+    """
+    try:
+        print("🔄 Starting aggressive browser state reset...")
+        
+        # Step 1: Close any open popups or dialogs
+        try:
+            # Try to close any confirmation dialogs
+            close_buttons = driver.find_elements(By.XPATH, "//button[contains(@id, '::close')] | //button[contains(@id, 'cancel')] | //button[contains(., 'Close')] | //button[contains(., 'Cancel')]")
+            for btn in close_buttons[:3]:  # Limit to first 3 to avoid infinite loops
+                try:
+                    if btn.is_displayed() and btn.is_enabled():
+                        driver.execute_script("arguments[0].click();", btn)
+                        time.sleep(1)
+                        print("✓ Closed popup/dialog")
+                except:
+                    continue
+        except:
+            pass  # Ignore if no popups to close
+        
+        # Step 2: Dismiss any alert dialogs
+        try:
+            alert = driver.switch_to.alert
+            alert.dismiss()
+            print("✓ Dismissed alert dialog")
+        except:
+            pass  # No alert present
+        
+        # Step 3: Navigate back to main security console
+        print("🏠 Navigating back to Security Console...")
+        driver.get(SECURITY_CONSOLE_URL)
+        
+        # Step 4: Wait for page to load completely
+        try:
+            WebDriverWait(driver, 15).until(
+                EC.presence_of_element_located((By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:_FOTr0:0:sp1:srchBox::content"))
+            )
+            print("✓ Security Console page loaded successfully")
+        except:
+            print("⚠️ Security Console page load timeout, but continuing...")
+        
+        # Step 5: Clear any search fields that might have residual data
+        try:
+            search_input = driver.find_element(By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:_FOTr0:0:sp1:srchBox::content")
+            search_input.clear()
+            driver.execute_script("arguments[0].value='';", search_input)
+            print("✓ Cleared search field")
+        except:
+            pass  # Search field not accessible
+        
+        # Step 6: Additional stabilization wait
+        time.sleep(3)
+        print("✅ Browser state reset completed successfully")
+        
+    except Exception as e:
+        print(f"⚠️ Browser state reset encountered error: {str(e)}")
+        # Last resort: force navigate to main page
+        driver.get(SECURITY_CONSOLE_URL)
+        time.sleep(5)
+        raise
+
+
 
 def click_next_button_OLD(driver, max_retries=3):
     """Enhanced next button handler for both create and copy flows"""
@@ -197,8 +407,13 @@ def click_next_button(driver, instance=1, max_retries=2):
                 
                 # Check again
                 final_step = get_current_step_number(driver)
-                if final_step >= expected_next_step:
+                if final_step == expected_next_step:
                     print(f"✓ Step {instance} transition completed (delayed)")
+                    return True
+                elif final_step > expected_next_step:
+                    print(f"⚠️ Navigation overshot! Currently at step {final_step}, expected {expected_next_step}")
+                    print(f"🔄 This may cause privilege operations to happen on wrong page!")
+                    # Still return True but with warning - we'll add verification later
                     return True
                 else:
                     raise Exception(f"Navigation failed: still at step {final_step}, expected {expected_next_step}")
@@ -311,6 +526,45 @@ def add_privilege(driver, existing_role_name, existing_role_code, privilege_code
         click_next_button(driver)
         print("✓ Next button clicked (1 time)")
         time.sleep(2)
+
+        # [5.5] CRITICAL: Verify we're on Function Security Policies (Step 2) before privilege operations
+        current_step = get_current_step_number(driver)
+        if current_step != 2:
+            print(f"⚠️ Navigation issue detected: Currently on Step {current_step}, need Step 2 (Function Security Policies)")
+            
+            # Attempt recovery navigation
+            if current_step < 2:
+                print(f"🔄 Attempting to navigate forward from Step {current_step} to Step 2...")
+                steps_needed = 2 - current_step
+                for i in range(steps_needed):
+                    try:
+                        if click_next_button(driver, instance=f"recovery_{i+1}"):
+                            recovery_step = get_current_step_number(driver)
+                            print(f"✓ Recovery navigation {i+1}/{steps_needed}: now at Step {recovery_step}")
+                        else:
+                            raise Exception(f"Recovery navigation failed at step {i+1}")
+                    except Exception as e:
+                        raise Exception(f"❌ Recovery navigation failed: {str(e)}")
+                
+                # Verify recovery was successful
+                final_step = get_current_step_number(driver)
+                if final_step != 2:
+                    raise Exception(f"❌ Recovery failed: Expected Step 2, still at Step {final_step}")
+                print(f"✅ Recovery successful: Now on Function Security Policies (Step 2)")
+            elif current_step == 1:
+                # Special case: if we're still on Basic Information, click Next once more
+                print(f"🔄 Still on Basic Information (Step 1), clicking Next to reach Step 2...")
+                if click_next_button(driver, instance="recovery_to_step2"):
+                    final_step = get_current_step_number(driver)
+                    if final_step != 2:
+                        raise Exception(f"❌ Failed to reach Step 2, currently at Step {final_step}")
+                    print(f"✅ Successfully navigated to Function Security Policies (Step 2)")
+                else:
+                    raise Exception(f"❌ Failed to navigate from Step 1 to Step 2")
+            else:
+                raise Exception(f"❌ WRONG PAGE: Currently on Step {current_step} (past Function Security Policies). Cannot recover - need to restart role editing process.")
+        else:
+            print(f"✅ Verified: Currently on Function Security Policies (Step 2) - proceeding with privilege operations")
 
         # [6] Click "Add Function Security Policy" button (privilege add)
         add_priv_btn = find_element_robust(driver, [
@@ -722,6 +976,45 @@ def delete_privilege(driver, existing_role_name, existing_role_code, privilege_c
         print("✓ Next button clicked (1 time)")
         time.sleep(2)
 
+        # [5.5D] CRITICAL: Verify we're on Function Security Policies (Step 2) before privilege operations
+        current_step = get_current_step_number(driver)
+        if current_step != 2:
+            print(f"⚠️ Navigation issue detected: Currently on Step {current_step}, need Step 2 (Function Security Policies)")
+            
+            # Attempt recovery navigation
+            if current_step < 2:
+                print(f"🔄 Attempting to navigate forward from Step {current_step} to Step 2...")
+                steps_needed = 2 - current_step
+                for i in range(steps_needed):
+                    try:
+                        if click_next_button(driver, instance=f"recovery_{i+1}"):
+                            recovery_step = get_current_step_number(driver)
+                            print(f"✓ Recovery navigation {i+1}/{steps_needed}: now at Step {recovery_step}")
+                        else:
+                            raise Exception(f"Recovery navigation failed at step {i+1}")
+                    except Exception as e:
+                        raise Exception(f"❌ Recovery navigation failed: {str(e)}")
+                
+                # Verify recovery was successful
+                final_step = get_current_step_number(driver)
+                if final_step != 2:
+                    raise Exception(f"❌ Recovery failed: Expected Step 2, still at Step {final_step}")
+                print(f"✅ Recovery successful: Now on Function Security Policies (Step 2)")
+            elif current_step == 1:
+                # Special case: if we're still on Basic Information, click Next once more
+                print(f"🔄 Still on Basic Information (Step 1), clicking Next to reach Step 2...")
+                if click_next_button(driver, instance="recovery_to_step2"):
+                    final_step = get_current_step_number(driver)
+                    if final_step != 2:
+                        raise Exception(f"❌ Failed to reach Step 2, currently at Step {final_step}")
+                    print(f"✅ Successfully navigated to Function Security Policies (Step 2)")
+                else:
+                    raise Exception(f"❌ Failed to navigate from Step 1 to Step 2")
+            else:
+                raise Exception(f"❌ WRONG PAGE: Currently on Step {current_step} (past Function Security Policies). Cannot recover - need to restart role editing process.")
+        else:
+            print(f"✅ Verified: Currently on Function Security Policies (Step 2) - proceeding with privilege deletion")
+
         # [6D] Select the privilege to delete based on privilege name in the existing privileges table
         try:
             # Wait for the table that contains existing privileges to be visible
@@ -930,13 +1223,34 @@ def main():
                 df.at[index, 'Error Details'] = error_msg
                 print(f"🔴 Failed to process row {index+1}: {error_msg}")
                 driver.save_screenshot(f"error_row_{index+1}.png")
+                
+                # CRITICAL: Perform aggressive browser state reset after failure
+                print(f"🔧 Performing aggressive browser state reset after row {index+1} failure...")
+                try:
+                    # Force clean browser state reset
+                    reset_browser_state(driver)
+                    print(f"✅ Browser state reset completed for row {index+1}")
+                except Exception as reset_error:
+                    print(f"⚠️ Browser state reset failed: {str(reset_error)}")
+                    # If reset fails, try to continue anyway
+                    try:
+                        driver.get(SECURITY_CONSOLE_URL)
+                        time.sleep(3)
+                        print(f"✅ Fallback reset to main page completed")
+                    except Exception as fallback_error:
+                        print(f"❌ Fallback reset also failed: {str(fallback_error)}")
+                        
             try:
                 df.to_excel("privilege_progress.xlsx", index=False)
                 print(f"💾 Saved progress after row {index+1} (Status: {current_status})")
             except Exception as save_error:
                 print(f"⚠️ Failed to save progress: {str(save_error)}")
-            driver.get(SECURITY_CONSOLE_URL)
-            time.sleep(2)
+            
+            # Reset to main page after each row (success or failure)
+            if current_status == 'Success':
+                driver.get(SECURITY_CONSOLE_URL)
+                time.sleep(2)
+            # Note: Browser state is already reset above for failures
 
         output_file = f"privilege_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         df.to_excel(output_file, index=False)

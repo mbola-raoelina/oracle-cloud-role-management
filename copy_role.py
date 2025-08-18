@@ -41,6 +41,216 @@ def initialize_driver():
     return initialize_driver_robust()
 
 
+def check_for_oracle_popup_messages(driver, operation_context="operation"):
+    """
+    Check for Oracle warning/error popup messages and extract the message content
+    
+    Returns:
+        tuple: (has_popup: bool, message: str, popup_type: str)
+        - has_popup: Whether a popup was found
+        - message: The extracted message text
+        - popup_type: Type of popup (warning, error, info, etc.)
+    """
+    try:
+        # Check for popup container
+        popup_selectors = [
+            "div.AFPopupSelector[id*='popup-container']",
+            "div[id*='msgDlg']",
+            "div.p_AFWarning",
+            "div.p_AFError", 
+            "div.p_AFInfo"
+        ]
+        
+        popup_found = False
+        popup_element = None
+        
+        for selector in popup_selectors:
+            try:
+                popup_element = driver.find_element(By.CSS_SELECTOR, selector)
+                if popup_element.is_displayed():
+                    popup_found = True
+                    break
+            except:
+                continue
+        
+        if not popup_found:
+            return False, "", ""
+        
+        # Extract message content using multiple strategies
+        message_selectors = [
+            "div.x1mu",           # Primary Oracle message class
+            "div.x1mw", 
+            "div.x1ml",
+            ".af_dialog_content",
+            "[class*='message']",
+            "td.x1n1 div",       # Alternative structure
+            "div[class*='mu']"    # Fallback for similar classes
+        ]
+        
+        message_text = ""
+        for msg_selector in message_selectors:
+            try:
+                message_elements = popup_element.find_elements(By.CSS_SELECTOR, msg_selector)
+                for element in message_elements:
+                    if element.is_displayed() and element.text.strip():
+                        message_text = element.text.strip()
+                        break
+                if message_text:
+                    break
+            except:
+                continue
+        
+        # Determine popup type based on classes
+        popup_type = "unknown"
+        try:
+            popup_classes = popup_element.get_attribute("class") or ""
+            if "p_AFWarning" in popup_classes or "warning" in popup_classes.lower():
+                popup_type = "warning"
+            elif "p_AFError" in popup_classes or "error" in popup_classes.lower():
+                popup_type = "error"
+            elif "p_AFInfo" in popup_classes or "info" in popup_classes.lower():
+                popup_type = "info"
+            else:
+                # Check for warning icon or text
+                if "warning" in message_text.lower() or popup_element.find_elements(By.CSS_SELECTOR, "img[src*='warning']"):
+                    popup_type = "warning"
+                elif "error" in message_text.lower():
+                    popup_type = "error"
+        except:
+            popup_type = "unknown"
+        
+        if not message_text:
+            message_text = f"Oracle popup detected during {operation_context} but message content could not be extracted"
+        
+        print(f"🔔 Oracle {popup_type} popup detected: {message_text}")
+        return True, message_text, popup_type
+        
+    except Exception as e:
+        print(f"⚠️ Error checking for Oracle popups: {str(e)}")
+        return False, "", ""
+
+
+def dismiss_oracle_popup(driver, popup_type="unknown"):
+    """
+    Dismiss Oracle popup by clicking OK, Cancel, or Close button
+    
+    Returns:
+        bool: Whether popup was successfully dismissed
+    """
+    try:
+        # Try multiple button selectors in order of preference
+        dismiss_selectors = [
+            "button[id*='::cancel']",           # Primary OK button
+            "button[id*='msgDlg::cancel']",     # Specific msgDlg cancel
+            "a[id*='::close']",                 # Close link
+            "button:contains('OK')",             # Generic OK button
+            "button:contains('Cancel')",        # Generic Cancel button  
+            "button:contains('Close')",         # Generic Close button
+            "[onclick*='cancel']",              # Elements with cancel onclick
+            "button.xux",                       # Oracle button class
+            "button[_afrpdo='cancel']"          # Oracle specific cancel attribute
+        ]
+        
+        for selector in dismiss_selectors:
+            try:
+                if ":contains(" in selector:
+                    # Handle contains selectors with XPath
+                    text = selector.split(":contains('")[1].split("')")[0]
+                    xpath_selector = f"//button[contains(text(), '{text}')]"
+                    buttons = driver.find_elements(By.XPATH, xpath_selector)
+                else:
+                    buttons = driver.find_elements(By.CSS_SELECTOR, selector)
+                
+                for button in buttons:
+                    try:
+                        if button.is_displayed() and button.is_enabled():
+                            driver.execute_script("arguments[0].click();", button)
+                            time.sleep(1)
+                            print(f"✅ Oracle popup dismissed using selector: {selector}")
+                            return True
+                    except:
+                        continue
+            except:
+                continue
+        
+        print(f"⚠️ Could not find dismissible button for Oracle popup")
+        return False
+        
+    except Exception as e:
+        print(f"❌ Error dismissing Oracle popup: {str(e)}")
+        return False
+
+
+def reset_browser_state(driver):
+    """
+    Aggressive browser state reset to prevent error cascade between rows
+    
+    This function performs comprehensive cleanup when an operation fails:
+    1. Close any open popups/dialogs
+    2. Navigate back to main page
+    3. Clear any form states
+    4. Verify we're in a clean state
+    """
+    try:
+        print("🔄 Starting aggressive browser state reset...")
+        
+        # Step 1: Close any open popups or dialogs
+        try:
+            # Try to close any confirmation dialogs
+            close_buttons = driver.find_elements(By.XPATH, "//button[contains(@id, '::close')] | //button[contains(@id, 'cancel')] | //button[contains(., 'Close')] | //button[contains(., 'Cancel')]")
+            for btn in close_buttons[:3]:  # Limit to first 3 to avoid infinite loops
+                try:
+                    if btn.is_displayed() and btn.is_enabled():
+                        driver.execute_script("arguments[0].click();", btn)
+                        time.sleep(1)
+                        print("✓ Closed popup/dialog")
+                except:
+                    continue
+        except:
+            pass  # Ignore if no popups to close
+        
+        # Step 2: Dismiss any alert dialogs
+        try:
+            alert = driver.switch_to.alert
+            alert.dismiss()
+            print("✓ Dismissed alert dialog")
+        except:
+            pass  # No alert present
+        
+        # Step 3: Navigate back to main security console
+        print("🏠 Navigating back to Security Console...")
+        driver.get(SECURITY_CONSOLE_URL)
+        
+        # Step 4: Wait for page to load completely
+        try:
+            WebDriverWait(driver, 15).until(
+                EC.presence_of_element_located((By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:_FOTr0:0:sp1:srchBox::content"))
+            )
+            print("✓ Security Console page loaded successfully")
+        except:
+            print("⚠️ Security Console page load timeout, but continuing...")
+        
+        # Step 5: Clear any search fields that might have residual data
+        try:
+            search_input = driver.find_element(By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:_FOTr0:0:sp1:srchBox::content")
+            search_input.clear()
+            driver.execute_script("arguments[0].value='';", search_input)
+            print("✓ Cleared search field")
+        except:
+            pass  # Search field not accessible
+        
+        # Step 6: Additional stabilization wait
+        time.sleep(3)
+        print("✅ Browser state reset completed successfully")
+        
+    except Exception as e:
+        print(f"⚠️ Browser state reset encountered error: {str(e)}")
+        # Last resort: force navigate to main page
+        driver.get(SECURITY_CONSOLE_URL)
+        time.sleep(5)
+        raise
+
+
 
 def handle_copy_confirmation(driver):
     """Handles the copy role confirmation popup with same reliability pattern"""
@@ -202,8 +412,13 @@ def click_next_button(driver, instance=1, max_retries=2):
                 
                 # Check again
                 final_step = get_current_step_number(driver)
-                if final_step >= expected_next_step:
+                if final_step == expected_next_step:
                     print(f"✓ Step {instance} transition completed (delayed)")
+                    return True
+                elif final_step > expected_next_step:
+                    print(f"⚠️ Navigation overshot! Currently at step {final_step}, expected {expected_next_step}")
+                    print(f"🔄 This may cause role operations to happen on wrong page!")
+                    # Still return True but with warning - we'll add verification later
                     return True
                 else:
                     raise Exception(f"Navigation failed: still at step {final_step}, expected {expected_next_step}")
@@ -384,7 +599,7 @@ def copy_existing_roleAD(driver, role_name_to_copy, new_role_name, new_role_code
     
     
         time.sleep(3)  # Allow time for dialog to open
-               # [7] Enhanced final save with priority to Submit and Close
+       # [7] Enhanced final save with priority to Submit and Close
         try:
             # First try Submit and Close button (which worked successfully in the log)
             try:
@@ -500,8 +715,8 @@ def copy_existing_role(driver, role_name_to_copy, existing_role_code, new_role_n
             # Use a shorter initial timeout with polling
             try:
                 WebDriverWait(driver, 5).until(
-                    EC.presence_of_element_located((By.XPATH, "//tr[contains(@id, 'resList:0')]"))
-                )
+                EC.presence_of_element_located((By.XPATH, "//tr[contains(@id, 'resList:0')]"))
+            )
                 elapsed = time.time() - start_time
                 print(f"✓ Search results loaded quickly ({elapsed:.1f}s)")
                 time.sleep(1)  # Short stabilization wait
@@ -574,8 +789,8 @@ def copy_existing_role(driver, role_name_to_copy, existing_role_code, new_role_n
                 copy_option = WebDriverWait(driver, 15).until(
                     EC.element_to_be_clickable((By.XPATH,
                         "//tr[@id='_FOpt1:_FOr1:0:_FONSr2:0:_FOTr0:0:sp1:resList:0:cmiCopy']"))
-                )
-                driver.execute_script("arguments[0].scrollIntoView(); arguments[0].click();", copy_option)
+            )
+            driver.execute_script("arguments[0].scrollIntoView(); arguments[0].click();", copy_option)
                 print("✓ Copy Role selected from actions menu")
             except Exception as e:
                 print(f"⚠️ Copy Role from actions menu failed: {str(e)}")
@@ -662,8 +877,8 @@ def copy_existing_role(driver, role_name_to_copy, existing_role_code, new_role_n
                     print(f"⚠️ XPath method failed, trying keyboard navigation: {str(xpath_error)}")
                     
                     # Alternative 2: Fallback to keyboard navigation
-                    ActionChains(driver).send_keys(Keys.TAB).pause(0.5).send_keys(Keys.ENTER).perform()
-                    print("✓ Copy options confirmed via keyboard shortcut")
+            ActionChains(driver).send_keys(Keys.TAB).pause(0.5).send_keys(Keys.ENTER).perform()
+            print("✓ Copy options confirmed via keyboard shortcut")
             
             # Wait a moment for page transition
             print("⏰ Waiting for page transition after Copy Role button click...")
@@ -688,8 +903,8 @@ def copy_existing_role(driver, role_name_to_copy, existing_role_code, new_role_n
             role_name_field = None
             try:
                 role_name_field = WebDriverWait(driver, 15).until(
-                    EC.visibility_of_element_located((By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:1:biSp1:bIRNam::content"))
-                )
+                EC.visibility_of_element_located((By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:1:biSp1:bIRNam::content"))
+            )
                 print("✅ Found role name field using primary ID")
             except:
                 print("⚠️ Primary role name field not found, trying alternative...")
@@ -718,10 +933,10 @@ def copy_existing_role(driver, role_name_to_copy, existing_role_code, new_role_n
              
             if current_role_name != new_role_name:
                 print("🔄 Setting role name...")
-                role_name_field.clear()
+            role_name_field.clear()
                 time.sleep(1)
-                role_name_field.send_keys(new_role_name)
-                
+            role_name_field.send_keys(new_role_name)
+
                 # Verify role name was entered correctly
                 final_role_name = role_name_field.get_attribute('value')
                 if final_role_name == new_role_name:
@@ -736,8 +951,8 @@ def copy_existing_role(driver, role_name_to_copy, existing_role_code, new_role_n
             role_code_field = None
             try:
                 role_code_field = WebDriverWait(driver, 15).until(
-                    EC.visibility_of_element_located((By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:1:biSp1:bIRCod::content"))
-                )
+                EC.visibility_of_element_located((By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:1:biSp1:bIRCod::content"))
+            )
                 print("✅ Found role code field using primary ID")
             except:
                 print("⚠️ Primary role code field not found, trying alternative...")
@@ -803,11 +1018,11 @@ def copy_existing_role(driver, role_name_to_copy, existing_role_code, new_role_n
                             )
                             
                             # Clear the field completely
-                            role_code_field.clear()
+            role_code_field.clear()
                             time.sleep(1)
                             
                             # Fill with new value
-                            role_code_field.send_keys(new_role_code)
+            role_code_field.send_keys(new_role_code)
                             time.sleep(1)
                             
                             # Verify the new value was entered
@@ -954,8 +1169,8 @@ def copy_existing_role(driver, role_name_to_copy, existing_role_code, new_role_n
             try:
                 confirmation = WebDriverWait(driver, 15).until(
                     EC.visibility_of_element_located((By.CSS_SELECTOR, "div.x1mu"))
-                ).text
-                print(f"✅ Confirmation Message: {confirmation}")
+            ).text
+            print(f"✅ Confirmation Message: {confirmation}")
             except Exception as msg_error:
                 print(f"⚠️ Could not get confirmation message: {str(msg_error)}")
                 confirmation = "Process completed successfully"
@@ -1113,16 +1328,32 @@ def main():
                 df.at[index, 'Status'] = 'Failed'
                 df.at[index, 'Error Details'] = error_msg
                 print(f"🔴 Failed to process row {index+1}: {error_msg}")
-                #driver.save_screenshot(f"error_row_{index+1}.png")
+                driver.save_screenshot(f"error_row_{index+1}.png")
 
-                # For connection/timeout errors, try to reinitialize
-                if "Unable to establish connection" in error_msg or "timed out" in error_msg:
-                    print("🔄 Attempting to reinitialize browser...")
+                # CRITICAL: Perform aggressive browser state reset after failure
+                print(f"🔧 Performing aggressive browser state reset after row {index+1} failure...")
+                try:
+                    # Force clean browser state reset
+                    reset_browser_state(driver)
+                    print(f"✅ Browser state reset completed for row {index+1}")
+                except Exception as reset_error:
+                    print(f"⚠️ Browser state reset failed: {str(reset_error)}")
+                    # If reset fails, try to continue anyway
+                    try:
+                        driver.get(SECURITY_CONSOLE_URL)
+                        time.sleep(3)
+                        print(f"✅ Fallback reset to main page completed")
+                    except Exception as fallback_error:
+                        print(f"❌ Fallback reset also failed: {str(fallback_error)}")
+
+                # For critical connection/timeout errors, try to reinitialize browser as last resort
+                if "Unable to establish connection" in error_msg or "session deleted" in error_msg:
+                    print("🔄 Critical connection error - attempting browser reinitialization...")
                     try:
                         driver.quit()
                         driver = initialize_driver()
                         driver.get(SECURITY_CONSOLE_URL)
-                        print("🚀 Browser reinitialized")
+                        print("🚀 Browser reinitialized due to critical connection error")
                     except Exception as reconnect_error:
                         print(f"🔴 Reconnection failed: {str(reconnect_error)}")
                         break  # Exit loop if we can't reconnect

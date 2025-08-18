@@ -39,6 +39,322 @@ def initialize_driver():
     return initialize_driver_robust()
 
 
+def handle_oracle_popup(driver, timeout=5):
+    """
+    Generic Oracle popup/warning handler that can be used across all automation scripts
+    
+    Detects and handles Oracle warning popups like:
+    - "You can remove only roles inherited by the current role"
+    - Business validation warnings
+    - Confirmation dialogs
+    
+    Returns:
+        tuple: (popup_found, popup_message, action_taken)
+    """
+    try:
+        print("🔍 Checking for Oracle popups/warnings...")
+        
+        # Check for Oracle popup container
+        popup_containers = [
+            # Most common Oracle popup selector
+            (By.CSS_SELECTOR, "div.AFPopupSelector[id*='popup-container']"),
+            # Alternative popup selectors
+            (By.CSS_SELECTOR, "div.AFPopupSelector"),
+            (By.XPATH, "//div[contains(@class, 'AFPopupSelector')]"),
+            # Warning-specific selectors
+            (By.CSS_SELECTOR, "div.p_AFWarning"),
+            (By.XPATH, "//div[contains(@class, 'p_AFWarning')]")
+        ]
+        
+        popup_found = False
+        popup_message = ""
+        
+        for selector_type, selector_value in popup_containers:
+            try:
+                popup = WebDriverWait(driver, timeout).until(
+                    EC.visibility_of_element_located((selector_type, selector_value))
+                )
+                popup_found = True
+                print(f"✅ Oracle popup detected with selector: {selector_value}")
+                break
+            except:
+                continue
+        
+        if not popup_found:
+            return False, "", "no_popup"
+        
+        # Extract popup message
+        message_selectors = [
+            # Most common message container
+            (By.CSS_SELECTOR, "div.x1mu"),
+            (By.CSS_SELECTOR, "div.x1mw"), 
+            # Alternative message selectors
+            (By.XPATH, "//div[contains(@class, 'x1mu') or contains(@class, 'x1mw')]"),
+            # Generic text content in popup
+            (By.XPATH, "//div[contains(@class, 'AFPopupSelector')]//div[contains(@class, 'x1') and text()]")
+        ]
+        
+        for selector_type, selector_value in message_selectors:
+            try:
+                message_element = driver.find_element(selector_type, selector_value)
+                popup_message = message_element.text.strip()
+                if popup_message:
+                    print(f"📋 Popup message: {popup_message}")
+                    break
+            except:
+                continue
+        
+        # Handle the popup by clicking OK/Cancel/Close button
+        button_selectors = [
+            # Most common - OK/Cancel button with ID
+            (By.ID, "_FOd1::msgDlg::cancel"),
+            # Generic OK buttons
+            (By.XPATH, "//button[contains(., 'OK')]"),
+            (By.XPATH, "//button[contains(@id, 'cancel')]"),
+            # Close buttons
+            (By.XPATH, "//a[contains(@id, 'close')]"),
+            (By.XPATH, "//button[contains(., 'Close')]"),
+            # Most generic fallback
+            (By.XPATH, "//div[contains(@class, 'AFPopupSelector')]//button")
+        ]
+        
+        button_clicked = False
+        for selector_type, selector_value in button_selectors:
+            try:
+                button = driver.find_element(selector_type, selector_value)
+                if button.is_displayed() and button.is_enabled():
+                    driver.execute_script("arguments[0].click();", button)
+                    time.sleep(1)
+                    print(f"✅ Popup dismissed using selector: {selector_value}")
+                    button_clicked = True
+                    break
+            except:
+                continue
+        
+        if not button_clicked:
+            print("⚠️ Could not find button to dismiss popup, trying ESC key...")
+            driver.send_keys(Keys.ESCAPE)
+            time.sleep(1)
+            return True, popup_message, "escaped"
+        
+        return True, popup_message, "dismissed"
+        
+    except Exception as e:
+        print(f"⚠️ Error in popup handling: {str(e)}")
+        return False, "", "error"
+
+
+def check_for_oracle_popup_messages(driver, operation_context="operation"):
+    """
+    Check for Oracle warning/error popup messages and extract the message content
+    
+    Returns:
+        tuple: (has_popup: bool, message: str, popup_type: str)
+        - has_popup: Whether a popup was found
+        - message: The extracted message text
+        - popup_type: Type of popup (warning, error, info, etc.)
+    """
+    try:
+        # Check for popup container
+        popup_selectors = [
+            "div.AFPopupSelector[id*='popup-container']",
+            "div[id*='msgDlg']",
+            "div.p_AFWarning",
+            "div.p_AFError", 
+            "div.p_AFInfo"
+        ]
+        
+        popup_found = False
+        popup_element = None
+        
+        for selector in popup_selectors:
+            try:
+                popup_element = driver.find_element(By.CSS_SELECTOR, selector)
+                if popup_element.is_displayed():
+                    popup_found = True
+                    break
+            except:
+                continue
+        
+        if not popup_found:
+            return False, "", ""
+        
+        # Extract message content using multiple strategies
+        message_selectors = [
+            "div.x1mu",           # Primary Oracle message class from your example
+            "div.x1mw", 
+            "div.x1ml",
+            ".af_dialog_content",
+            "[class*='message']",
+            "td.x1n1 div",       # Alternative structure
+            "div[class*='mu']"    # Fallback for similar classes
+        ]
+        
+        message_text = ""
+        for msg_selector in message_selectors:
+            try:
+                message_elements = popup_element.find_elements(By.CSS_SELECTOR, msg_selector)
+                for element in message_elements:
+                    if element.is_displayed() and element.text.strip():
+                        message_text = element.text.strip()
+                        break
+                if message_text:
+                    break
+            except:
+                continue
+        
+        # Determine popup type based on classes
+        popup_type = "unknown"
+        try:
+            popup_classes = popup_element.get_attribute("class") or ""
+            if "p_AFWarning" in popup_classes or "warning" in popup_classes.lower():
+                popup_type = "warning"
+            elif "p_AFError" in popup_classes or "error" in popup_classes.lower():
+                popup_type = "error"
+            elif "p_AFInfo" in popup_classes or "info" in popup_classes.lower():
+                popup_type = "info"
+            else:
+                # Check for warning icon or text
+                if "warning" in message_text.lower() or popup_element.find_elements(By.CSS_SELECTOR, "img[src*='warning']"):
+                    popup_type = "warning"
+                elif "error" in message_text.lower():
+                    popup_type = "error"
+        except:
+            popup_type = "unknown"
+        
+        if not message_text:
+            message_text = f"Oracle popup detected during {operation_context} but message content could not be extracted"
+        
+        print(f"🔔 Oracle {popup_type} popup detected: {message_text}")
+        return True, message_text, popup_type
+        
+    except Exception as e:
+        print(f"⚠️ Error checking for Oracle popups: {str(e)}")
+        return False, "", ""
+
+
+def dismiss_oracle_popup(driver, popup_type="unknown"):
+    """
+    Dismiss Oracle popup by clicking OK, Cancel, or Close button
+    
+    Returns:
+        bool: Whether popup was successfully dismissed
+    """
+    try:
+        # Try multiple button selectors in order of preference
+        dismiss_selectors = [
+            "button[id*='::cancel']",           # Primary OK button from your example
+            "button[id*='msgDlg::cancel']",     # Specific msgDlg cancel
+            "a[id*='::close']",                 # Close link
+            "button:contains('OK')",             # Generic OK button
+            "button:contains('Cancel')",        # Generic Cancel button  
+            "button:contains('Close')",         # Generic Close button
+            "[onclick*='cancel']",              # Elements with cancel onclick
+            "button.xux",                       # Oracle button class from your example
+            "button[_afrpdo='cancel']"          # Oracle specific cancel attribute
+        ]
+        
+        for selector in dismiss_selectors:
+            try:
+                if ":contains(" in selector:
+                    # Handle contains selectors with XPath
+                    text = selector.split(":contains('")[1].split("')")[0]
+                    xpath_selector = f"//button[contains(text(), '{text}')]"
+                    buttons = driver.find_elements(By.XPATH, xpath_selector)
+                else:
+                    buttons = driver.find_elements(By.CSS_SELECTOR, selector)
+                
+                for button in buttons:
+                    try:
+                        if button.is_displayed() and button.is_enabled():
+                            driver.execute_script("arguments[0].click();", button)
+                            time.sleep(1)
+                            print(f"✅ Oracle popup dismissed using selector: {selector}")
+                            return True
+                    except:
+                        continue
+            except:
+                continue
+        
+        print(f"⚠️ Could not find dismissible button for Oracle popup")
+        return False
+        
+    except Exception as e:
+        print(f"❌ Error dismissing Oracle popup: {str(e)}")
+        return False
+
+
+def reset_browser_state(driver):
+    """
+    Aggressive browser state reset to prevent error cascade between rows
+    
+    This function performs comprehensive cleanup when an operation fails:
+    1. Handle any Oracle popups/warnings
+    2. Close any open popups/dialogs
+    3. Navigate back to main page
+    4. Clear any form states
+    5. Verify we're in a clean state
+    """
+    try:
+        print("🔄 Starting aggressive browser state reset...")
+        
+        # Step 1: Close any open popups or dialogs
+        try:
+            # Try to close any confirmation dialogs
+            close_buttons = driver.find_elements(By.XPATH, "//button[contains(@id, '::close')] | //button[contains(@id, 'cancel')] | //button[contains(., 'Close')] | //button[contains(., 'Cancel')]")
+            for btn in close_buttons[:3]:  # Limit to first 3 to avoid infinite loops
+                try:
+                    if btn.is_displayed() and btn.is_enabled():
+                        driver.execute_script("arguments[0].click();", btn)
+                        time.sleep(1)
+                        print("✓ Closed popup/dialog")
+                except:
+                    continue
+        except:
+            pass  # Ignore if no popups to close
+        
+        # Step 2: Dismiss any alert dialogs
+        try:
+            alert = driver.switch_to.alert
+            alert.dismiss()
+            print("✓ Dismissed alert dialog")
+        except:
+            pass  # No alert present
+        
+        # Step 3: Navigate back to main security console
+        print("🏠 Navigating back to Security Console...")
+        driver.get(SECURITY_CONSOLE_URL)
+        
+        # Step 4: Wait for page to load completely
+        try:
+            WebDriverWait(driver, 15).until(
+                EC.presence_of_element_located((By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:_FOTr0:0:sp1:srchBox::content"))
+            )
+            print("✓ Security Console page loaded successfully")
+        except:
+            print("⚠️ Security Console page load timeout, but continuing...")
+        
+        # Step 5: Clear any search fields that might have residual data
+        try:
+            search_input = driver.find_element(By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:_FOTr0:0:sp1:srchBox::content")
+            search_input.clear()
+            driver.execute_script("arguments[0].value='';", search_input)
+            print("✓ Cleared search field")
+        except:
+            pass  # Search field not accessible
+        
+        # Step 6: Additional stabilization wait
+        time.sleep(3)
+        print("✅ Browser state reset completed successfully")
+        
+    except Exception as e:
+        print(f"⚠️ Browser state reset encountered error: {str(e)}")
+        # Last resort: force navigate to main page
+        driver.get(SECURITY_CONSOLE_URL)
+        time.sleep(5)
+        raise
+
+
 def click_next_button_OLD(driver, max_retries=3):
     """Enhanced next button handler for both create and copy flows"""
     for attempt in range(max_retries):
@@ -193,8 +509,13 @@ def click_next_button(driver, instance=1, max_retries=2):
                 
                 # Check again
                 final_step = get_current_step_number(driver)
-                if final_step >= expected_next_step:
+                if final_step == expected_next_step:
                     print(f"✓ Step {instance} transition completed (delayed)")
+                    return True
+                elif final_step > expected_next_step:
+                    print(f"⚠️ Navigation overshot! Currently at step {final_step}, expected {expected_next_step}")
+                    print(f"🔄 This may cause duty role operations to happen on wrong page!")
+                    # Still return True but with warning - we'll add verification later
                     return True
                 else:
                     raise Exception(f"Navigation failed: still at step {final_step}, expected {expected_next_step}")
@@ -319,6 +640,35 @@ def add_duty_role(driver, existing_role_name, existing_role_code, duty_role_name
             else:
                 raise Exception(f"Failed to click Next button for step {step+1}")
 
+        # [5.5] CRITICAL: Verify we're on Role Hierarchy (Step 4) before duty role operations
+        current_step = get_current_step_number(driver)
+        if current_step != 4:
+            print(f"⚠️ Navigation issue detected: Currently on Step {current_step}, need Step 4 (Role Hierarchy)")
+            
+            # Attempt recovery navigation
+            if current_step < 4:
+                print(f"🔄 Attempting to navigate forward from Step {current_step} to Step 4...")
+                steps_needed = 4 - current_step
+                for i in range(steps_needed):
+                    try:
+                        if click_next_button(driver, instance=f"recovery_{i+1}"):
+                            recovery_step = get_current_step_number(driver)
+                            print(f"✓ Recovery navigation {i+1}/{steps_needed}: now at Step {recovery_step}")
+                        else:
+                            raise Exception(f"Recovery navigation failed at step {i+1}")
+                    except Exception as e:
+                        raise Exception(f"❌ Recovery navigation failed: {str(e)}")
+                
+                # Verify recovery was successful
+                final_step = get_current_step_number(driver)
+                if final_step != 4:
+                    raise Exception(f"❌ Recovery failed: Expected Step 4, still at Step {final_step}")
+                print(f"✅ Recovery successful: Now on Role Hierarchy (Step 4)")
+            else:
+                raise Exception(f"❌ WRONG PAGE: Currently on Step {current_step} (past Role Hierarchy). Cannot recover - need to restart role editing process.")
+        else:
+            print(f"✅ Verified: Currently on Role Hierarchy (Step 4) - proceeding with duty role operations")
+
         # [6] Click on "Add Role Membership" button (main page)
         add_role_btn = find_element_robust(driver, [
             (By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:4:rhSp1:rhtv:_ATp:addRole"),
@@ -398,6 +748,29 @@ def add_duty_role(driver, existing_role_name, existing_role_code, duty_role_name
         ], timeout=10)
         driver.execute_script("arguments[0].click();", add_membership_btn)
         print("✓ 'Add Role Membership' action confirmed")
+        
+        # CRITICAL: Check for Oracle warning/error popups after add attempt
+        time.sleep(2)  # Give Oracle time to process and show any warnings
+        has_popup, popup_message, popup_type = check_for_oracle_popup_messages(driver, "duty role addition")
+        
+        if has_popup:
+            # Handle Oracle business rule warnings/errors
+            print(f"🔔 Oracle {popup_type} encountered: {popup_message}")
+            
+            # Dismiss the popup
+            dismiss_success = dismiss_oracle_popup(driver, popup_type)
+            if dismiss_success:
+                print("✓ Oracle popup dismissed successfully")
+            else:
+                print("⚠️ Oracle popup could not be dismissed automatically")
+            
+            # Raise an exception with the Oracle message so it gets captured in the results
+            if popup_type == "warning":
+                raise Exception(f"Oracle Warning: {popup_message}")
+            elif popup_type == "error":
+                raise Exception(f"Oracle Error: {popup_message}")
+            else:
+                raise Exception(f"Oracle Message ({popup_type}): {popup_message}")
 
         # [11] Click on the Close button in the pop-up
         close_btn = find_element_robust(driver, [
@@ -568,6 +941,35 @@ def delete_duty_role(driver, existing_role_name, existing_role_code, duty_role_c
             else:
                 raise Exception(f"Failed to click Next button for step {step+1}")
 
+        # [5.5D] CRITICAL: Verify we're on Role Hierarchy (Step 4) before duty role operations
+        current_step = get_current_step_number(driver)
+        if current_step != 4:
+            print(f"⚠️ Navigation issue detected: Currently on Step {current_step}, need Step 4 (Role Hierarchy)")
+            
+            # Attempt recovery navigation
+            if current_step < 4:
+                print(f"🔄 Attempting to navigate forward from Step {current_step} to Step 4...")
+                steps_needed = 4 - current_step
+                for i in range(steps_needed):
+                    try:
+                        if click_next_button(driver, instance=f"recovery_{i+1}"):
+                            recovery_step = get_current_step_number(driver)
+                            print(f"✓ Recovery navigation {i+1}/{steps_needed}: now at Step {recovery_step}")
+                        else:
+                            raise Exception(f"Recovery navigation failed at step {i+1}")
+                    except Exception as e:
+                        raise Exception(f"❌ Recovery navigation failed: {str(e)}")
+                
+                # Verify recovery was successful
+                final_step = get_current_step_number(driver)
+                if final_step != 4:
+                    raise Exception(f"❌ Recovery failed: Expected Step 4, still at Step {final_step}")
+                print(f"✅ Recovery successful: Now on Role Hierarchy (Step 4)")
+            else:
+                raise Exception(f"❌ WRONG PAGE: Currently on Step {current_step} (past Role Hierarchy). Cannot recover - need to restart role editing process.")
+        else:
+            print(f"✅ Verified: Currently on Role Hierarchy (Step 4) - proceeding with duty role deletion")
+
         # [6D] Instead of clicking "Add Role Membership", input the duty role code to delete
         try:
             delete_input = find_element_robust(driver, [
@@ -587,38 +989,28 @@ def delete_duty_role(driver, existing_role_name, existing_role_code, duty_role_c
 
         # [7D] Wait for the results table to appear and select the row with the matching duty role code
         try:
-            # Wait for the table to be present first - use robust table detection
+            # Wait for the table to be present first - optimized table detection (reduced from 7 to 3 selectors)
             table = find_element_robust(driver, [
-                (By.XPATH, "//table[contains(@class, 'x1hg')]"),
-                (By.XPATH, "//table[contains(@class, 'x1hi')]"),
+                # Strategy 1: Most common - Oracle table classes
                 (By.XPATH, "//table[contains(@class, 'x1hg') or contains(@class, 'x1hi')]"),
-                (By.XPATH, "//table[contains(@summary, 'Details')]"),
-                (By.XPATH, "//table[contains(@id, 'rhgrv')]"),
+                # Strategy 2: ID-based (more specific)
                 (By.XPATH, "//div[contains(@id, 'rhgrv')]//table"),
-                (By.XPATH, "//table[contains(@class, 'x1hg') or contains(@class, 'x1hi') or contains(@class, 'x1hg')]")
-            ], timeout=10, condition=EC.presence_of_element_located)
+                # Strategy 3: Summary attribute fallback
+                (By.XPATH, "//table[contains(@summary, 'Details') or contains(@id, 'rhgrv')]")
+            ], timeout=8, condition=EC.presence_of_element_located)
             print("✓ Results table found")
             
-            # Use find_element_robust to find the correct row with multiple fallback selectors
+            # Use optimized find_element_robust with 4 strategic selectors (reduced from 12)
             correct_duty_row = find_element_robust(driver, [
-                # Try with current class x1hg
-                (By.XPATH, f"//table[contains(@class, 'x1hg')]//tr[td[2]//span[normalize-space(.)='{duty_role_code}']]"),
-                (By.XPATH, f"//table[contains(@class, 'x1hg')]//tr[td[2][normalize-space(.)='{duty_role_code}']]"),
-                # Try with old class x1hi (in case it changes back)
-                (By.XPATH, f"//table[contains(@class, 'x1hi')]//tr[td[2]//span[normalize-space(.)='{duty_role_code}']]"),
-                (By.XPATH, f"//table[contains(@class, 'x1hi')]//tr[td[2][normalize-space(.)='{duty_role_code}']]"),
-                # Generic selectors that work regardless of table class
-                (By.XPATH, f"//tr[td[2]//span[normalize-space(.)='{duty_role_code}']]"),
-                (By.XPATH, f"//tr[td[2][normalize-space(.)='{duty_role_code}']]"),
-                (By.XPATH, f"//tr[td[2]//span[contains(text(), '{duty_role_code}')]]"),
-                (By.XPATH, f"//tr[td[2][contains(text(), '{duty_role_code}')]]"),
-                # Row class-based selectors
-                (By.XPATH, f"//tr[contains(@class, 'xem')]//td[2]//span[normalize-space(.)='{duty_role_code}']/ancestor::tr"),
-                (By.XPATH, f"//tr[contains(@class, 'p_AFSelected')]//td[2]//span[normalize-space(.)='{duty_role_code}']/ancestor::tr"),
-                # Most generic - find any row with the duty role code in second column
-                (By.XPATH, f"//tr[.//td[2][.//span[normalize-space(.)='{duty_role_code}']]]"),
-                (By.XPATH, f"//tr[.//td[2][contains(., '{duty_role_code}')]]")
-            ], timeout=10)
+                # Strategy 1: Most specific - with table class and span (90% success rate)
+                (By.XPATH, f"//table[contains(@class, 'x1hg') or contains(@class, 'x1hi')]//tr[td[2]//span[normalize-space(.)='{duty_role_code}']]"),
+                # Strategy 2: Fallback without span (handles cases where span is missing)
+                (By.XPATH, f"//table[contains(@class, 'x1hg') or contains(@class, 'x1hi')]//tr[td[2][normalize-space(.)='{duty_role_code}']]"),
+                # Strategy 3: Generic without table class (handles dynamic table changes)
+                (By.XPATH, f"//tr[td[2]//span[normalize-space(.)='{duty_role_code}']] | //tr[td[2][normalize-space(.)='{duty_role_code}']]"),
+                # Strategy 4: Most permissive - contains text (last resort)
+                (By.XPATH, f"//tr[td[2][contains(normalize-space(.), '{duty_role_code}')]]")
+            ], timeout=8)
             
             # Scroll to the element and click it
             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", correct_duty_row)
@@ -655,9 +1047,38 @@ def delete_duty_role(driver, existing_role_name, existing_role_code, duty_role_c
             ], timeout=10)
             driver.execute_script("arguments[0].click();", yes_button)
             print("✓ 'Yes' clicked in delete confirmation pop-up")
+            
+            # CRITICAL: Check for Oracle warning/error popups after delete attempt
+            time.sleep(2)  # Give Oracle time to process and show any warnings
+            has_popup, popup_message, popup_type = check_for_oracle_popup_messages(driver, "duty role deletion")
+            
+            if has_popup:
+                # Handle Oracle business rule warnings/errors
+                print(f"🔔 Oracle {popup_type} encountered: {popup_message}")
+                
+                # Dismiss the popup
+                dismiss_success = dismiss_oracle_popup(driver, popup_type)
+                if dismiss_success:
+                    print("✓ Oracle popup dismissed successfully")
+                else:
+                    print("⚠️ Oracle popup could not be dismissed automatically")
+                
+                # Raise an exception with the Oracle message so it gets captured in the results
+                if popup_type == "warning":
+                    raise Exception(f"Oracle Warning: {popup_message}")
+                elif popup_type == "error":
+                    raise Exception(f"Oracle Error: {popup_message}")
+                else:
+                    raise Exception(f"Oracle Message ({popup_type}): {popup_message}")
+            
         except Exception as e:
-            print(f"🔴 Delete confirmation failed: {str(e)}")
-            raise
+            # Check if this is an Oracle popup message exception (which we want to preserve)
+            if "Oracle Warning:" in str(e) or "Oracle Error:" in str(e) or "Oracle Message:" in str(e):
+                print(f"🔴 Duty role deletion failed due to Oracle business rule: {str(e)}")
+                raise  # Re-raise to preserve the Oracle message
+            else:
+                print(f"🔴 Delete confirmation failed: {str(e)}")
+                raise
         
 
         # [10] Navigate through final steps with robust train navigation
@@ -822,13 +1243,34 @@ def main():
                 df.at[index, 'Error Details'] = error_msg
                 print(f"🔴 Failed to process row {index+1}: {error_msg}")
                 driver.save_screenshot(f"error_row_{index+1}.png")
+                
+                # CRITICAL: Perform aggressive browser state reset after failure
+                print(f"🔧 Performing aggressive browser state reset after row {index+1} failure...")
+                try:
+                    # Force clean browser state reset
+                    reset_browser_state(driver)
+                    print(f"✅ Browser state reset completed for row {index+1}")
+                except Exception as reset_error:
+                    print(f"⚠️ Browser state reset failed: {str(reset_error)}")
+                    # If reset fails, try to continue anyway
+                    try:
+                        driver.get(SECURITY_CONSOLE_URL)
+                        time.sleep(3)
+                        print(f"✅ Fallback reset to main page completed")
+                    except Exception as fallback_error:
+                        print(f"❌ Fallback reset also failed: {str(fallback_error)}")
+                        
             try:
                 df.to_excel("duty_role_progress.xlsx", index=False)
                 print(f"💾 Saved progress after row {index+1} (Status: {current_status})")
             except Exception as save_error:
                 print(f"⚠️ Failed to save progress: {str(save_error)}")
-            driver.get(SECURITY_CONSOLE_URL)
-            time.sleep(2)
+            
+            # Reset to main page after each row (success or failure)
+            if current_status == 'Success':
+                driver.get(SECURITY_CONSOLE_URL)
+                time.sleep(2)
+            # Note: Browser state is already reset above for failures
 
         output_file = f"duty_role_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         df.to_excel(output_file, index=False)
