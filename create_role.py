@@ -385,7 +385,7 @@ def click_next_button(driver, instance=1, max_retries=2):
                     print(f"⚠️ Navigation overshot! Currently at step {final_step}, expected {expected_next_step}")
                     print(f"🔄 This may cause role operations to happen on wrong page!")
                     # Still return True but with warning - we'll add verification later
-            return True
+                    return True
                 else:
                     raise Exception(f"Navigation failed: still at step {final_step}, expected {expected_next_step}")
                 
@@ -573,7 +573,7 @@ def select_role_category(driver, role_category, max_retries=3):
         except Exception as e:
             print(f"❌ Unexpected error: {str(e)}")
             if attempt == max_retries - 1:
-            raise
+                raise
             print("🔄 Retrying...")
             time.sleep(2)
             continue
@@ -737,9 +737,9 @@ def main():
                 
                 # Wait for popup to appear using the correct selector
                 try:
-                WebDriverWait(driver, 20).until(
-                    EC.visibility_of_element_located((By.CSS_SELECTOR, "div.AFPopupSelector"))
-                )
+                    WebDriverWait(driver, 20).until(
+                        EC.visibility_of_element_located((By.CSS_SELECTOR, "div.AFPopupSelector"))
+                    )
                     print("✅ Confirmation popup appeared")
                 except:
                     print("⚠️ Could not detect confirmation popup, but continuing...")
@@ -752,7 +752,7 @@ def main():
                         EC.visibility_of_element_located((By.CSS_SELECTOR, "div.x1mu"))
                     )
                     confirmation_message = message_element.text
-                print(f"✅ Confirmation Message: {confirmation_message}")
+                    print(f"✅ Confirmation Message: {confirmation_message}")
                 except:
                     print("⚠️ Could not get confirmation message, using default")
                 
@@ -839,8 +839,8 @@ def main():
 
             # Reset to main page after each row (success or failure)
             if current_status == 'Success':
-            driver.get(SECURITY_CONSOLE_URL)
-            time.sleep(2)
+                driver.get(SECURITY_CONSOLE_URL)
+                time.sleep(2)
             # Note: Browser state is already reset above for failures
 
         # Save final results
