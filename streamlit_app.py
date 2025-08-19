@@ -95,6 +95,12 @@ def main():
     if 'connection_details' not in st.session_state:
         st.session_state.connection_details = {}
     
+    # Initialize output management system
+    if 'output_history' not in st.session_state:
+        st.session_state.output_history = []
+    if 'current_output' not in st.session_state:
+        st.session_state.current_output = None
+    
     # Sidebar for navigation
     st.sidebar.title("Navigation")
     page = st.sidebar.selectbox(
@@ -165,6 +171,9 @@ def main():
         os.environ["BIP_PASSWORD"] = st.session_state.connection_details.get('password', '')
         os.environ["ORACLE_ENVIRONMENT"] = st.session_state.connection_details.get('environment', 'dev1')
     
+    # Show persistent output panel in sidebar
+    show_persistent_output_panel()
+    
     # Page routing with authentication gates
     if st.session_state.current_page == "🏠 Home":
         show_home_page()
@@ -193,6 +202,126 @@ def main():
             show_results_page()
         else:
             show_connection_required_page("Results")
+
+def save_output_to_history(operation_type, result_df, operation_details):
+    """Save operation output to session history for persistent access"""
+    output_record = {
+        'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'operation_type': operation_type,
+        'result_df': result_df.copy(),
+        'operation_details': operation_details,
+        'total_records': len(result_df),
+        'success_count': len(result_df[result_df['Status'] == 'Success']) if 'Status' in result_df.columns else 0,
+        'failed_count': len(result_df[result_df['Status'] == 'Failed']) if 'Status' in result_df.columns else 0
+    }
+    
+    # Add to history (keep last 10 operations)
+    st.session_state.output_history.insert(0, output_record)
+    if len(st.session_state.output_history) > 10:
+        st.session_state.output_history = st.session_state.output_history[:10]
+    
+    # Set as current output
+    st.session_state.current_output = output_record
+    
+    print(f"✅ Output saved to history: {operation_type} - {len(result_df)} records")
+
+def display_output_with_history(operation_type, result_df, operation_details):
+    """Enhanced output display with history management and auto-save"""
+    
+    # Save to history first
+    save_output_to_history(operation_type, result_df, operation_details)
+    
+    # Display current results
+    st.success(f"✅ {operation_type} completed successfully!")
+    
+    # Create tabs for current results and history
+    tab_current, tab_history = st.tabs(["📊 Current Results", "📚 Output History"])
+    
+    with tab_current:
+        st.subheader(f"📊 {operation_type} Results")
+        
+        # Statistics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Records", len(result_df))
+        with col2:
+            success_count = len(result_df[result_df['Status'] == 'Success']) if 'Status' in result_df.columns else 0
+            st.metric("Success", success_count, delta=f"{success_count/len(result_df)*100:.1f}%")
+        with col3:
+            failed_count = len(result_df[result_df['Status'] == 'Failed']) if 'Status' in result_df.columns else 0
+            st.metric("Failed", failed_count)
+        
+        # Results table
+        st.dataframe(result_df, use_container_width=True)
+        
+        # Download options
+        col1, col2 = st.columns(2)
+        with col1:
+            csv = result_df.to_csv(index=False)
+            st.download_button(
+                label="📥 Download CSV",
+                data=csv,
+                file_name=f"{operation_type.lower().replace(' ', '_')}_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+        with col2:
+            # Auto-save Excel file
+            excel_filename = f"{operation_type.lower().replace(' ', '_')}_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            try:
+                result_df.to_excel(excel_filename, index=False)
+                st.success(f"💾 Auto-saved: {excel_filename}")
+            except Exception as e:
+                st.warning(f"⚠️ Auto-save failed: {str(e)}")
+    
+    with tab_history:
+        st.subheader("📚 Recent Operations History")
+        
+        if st.session_state.output_history:
+            for i, record in enumerate(st.session_state.output_history):
+                with st.expander(f"🔖 {record['operation_type']} - {record['timestamp']} ({record['total_records']} records)"):
+                    
+                    # Quick stats
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Total", record['total_records'])
+                    with col2:
+                        st.metric("Success", record['success_count'])
+                    with col3:
+                        st.metric("Failed", record['failed_count'])
+                    
+                    # Show data
+                    st.dataframe(record['result_df'], use_container_width=True)
+                    
+                    # Download from history
+                    csv_historical = record['result_df'].to_csv(index=False)
+                    st.download_button(
+                        label=f"📥 Download {record['operation_type']}",
+                        data=csv_historical,
+                        file_name=f"{record['operation_type'].lower().replace(' ', '_')}_{record['timestamp'].replace(':', '').replace('-', '').replace(' ', '_')}.csv",
+                        mime="text/csv",
+                        key=f"download_history_{i}"
+                    )
+        else:
+            st.info("🔍 No operations performed yet. Complete an operation to see results here.")
+
+def show_persistent_output_panel():
+    """Always-visible output panel in sidebar"""
+    if st.session_state.current_output:
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("📊 Latest Output")
+        
+        output = st.session_state.current_output
+        st.sidebar.info(f"**{output['operation_type']}**")
+        st.sidebar.info(f"🕐 {output['timestamp']}")
+        st.sidebar.info(f"📊 {output['total_records']} records")
+        st.sidebar.info(f"✅ {output['success_count']} success")
+        st.sidebar.info(f"❌ {output['failed_count']} failed")
+        
+        # Quick access to results page
+        if st.sidebar.button("📊 View Full Results", key="view_full_results"):
+            st.session_state.current_page = "📊 Results"
+            st.rerun()
 
 def show_connection_required_page(feature_name):
     """Display a page requiring connection for protected features"""
@@ -402,24 +531,24 @@ def show_create_role_page():
                                 # Return to original directory
                                 os.chdir(original_dir)
                                 
-                                st.success("✅ Role creation completed successfully!")
-                                
-                                # Show results
+                                # Enhanced results display with history management
                                 results_files = [f for f in os.listdir(script_dir) if f.startswith('role_create_results_')]
                                 if results_files:
                                     latest_result = max(results_files, key=os.path.getctime)
                                     result_df = pd.read_excel(os.path.join(script_dir, latest_result))
-                                    st.subheader("📊 Results")
-                                    st.dataframe(result_df)
                                     
-                                    # Download button
-                                    csv = result_df.to_csv(index=False)
-                                    st.download_button(
-                                        label="📥 Download Results",
-                                        data=csv,
-                                        file_name=f"role_creation_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                                        mime="text/csv"
+                                    # Use new enhanced output system
+                                    display_output_with_history(
+                                        operation_type="Role Creation",
+                                        result_df=result_df,
+                                        operation_details={
+                                            'input_file': uploaded_file.name,
+                                            'total_roles': len(df),
+                                            'processed_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                        }
                                     )
+                                else:
+                                    st.warning("⚠️ No result files found. The operation may have failed.")
                                 
                             except Exception as e:
                                 st.error(f"❌ Error during role creation: {str(e)}")
@@ -494,24 +623,24 @@ def show_copy_role_page():
                                 # Return to original directory
                                 os.chdir(original_dir)
                                 
-                                st.success("✅ Role copying completed successfully!")
-                                
-                                # Show results
+                                # Enhanced results display with history management
                                 results_files = [f for f in os.listdir(script_dir) if f.startswith('role_copy_results_')]
                                 if results_files:
                                     latest_result = max(results_files, key=os.path.getctime)
                                     result_df = pd.read_excel(os.path.join(script_dir, latest_result))
-                                    st.subheader("📊 Results")
-                                    st.dataframe(result_df)
                                     
-                                    # Download button
-                                    csv = result_df.to_csv(index=False)
-                                    st.download_button(
-                                        label="📥 Download Results",
-                                        data=csv,
-                                        file_name=f"role_copy_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                                        mime="text/csv"
+                                    # Use new enhanced output system
+                                    display_output_with_history(
+                                        operation_type="Role Copy",
+                                        result_df=result_df,
+                                        operation_details={
+                                            'input_file': uploaded_file.name,
+                                            'total_roles': len(df),
+                                            'processed_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                        }
                                     )
+                                else:
+                                    st.warning("⚠️ No result files found. The operation may have failed.")
                                 
                             except Exception as e:
                                 st.error(f"❌ Error during role copying: {str(e)}")
@@ -586,24 +715,24 @@ def show_duty_role_page():
                                 # Return to original directory
                                 os.chdir(original_dir)
                                 
-                                st.success("✅ Duty role management completed successfully!")
-                                
-                                # Show results
+                                # Enhanced results display with history management
                                 results_files = [f for f in os.listdir(script_dir) if f.startswith('duty_role_results_')]
                                 if results_files:
                                     latest_result = max(results_files, key=os.path.getctime)
                                     result_df = pd.read_excel(os.path.join(script_dir, latest_result))
-                                    st.subheader("📊 Results")
-                                    st.dataframe(result_df)
                                     
-                                    # Download button
-                                    csv = result_df.to_csv(index=False)
-                                    st.download_button(
-                                        label="📥 Download Results",
-                                        data=csv,
-                                        file_name=f"duty_role_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                                        mime="text/csv"
+                                    # Use new enhanced output system
+                                    display_output_with_history(
+                                        operation_type="Duty Role Management",
+                                        result_df=result_df,
+                                        operation_details={
+                                            'input_file': uploaded_file.name,
+                                            'total_operations': len(df),
+                                            'processed_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                        }
                                     )
+                                else:
+                                    st.warning("⚠️ No result files found. The operation may have failed.")
                                 
                             except Exception as e:
                                 st.error(f"❌ Error during duty role management: {str(e)}")
@@ -678,24 +807,24 @@ def show_privilege_management_page():
                                 # Return to original directory
                                 os.chdir(original_dir)
                                 
-                                st.success("✅ Privilege management completed successfully!")
-                                
-                                # Show results
+                                # Enhanced results display with history management
                                 results_files = [f for f in os.listdir(script_dir) if f.startswith('privilege_results_')]
                                 if results_files:
                                     latest_result = max(results_files, key=os.path.getctime)
                                     result_df = pd.read_excel(os.path.join(script_dir, latest_result))
-                                    st.subheader("📊 Results")
-                                    st.dataframe(result_df)
                                     
-                                    # Download button
-                                    csv = result_df.to_csv(index=False)
-                                    st.download_button(
-                                        label="📥 Download Results",
-                                        data=csv,
-                                        file_name=f"privilege_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                                        mime="text/csv"
+                                    # Use new enhanced output system
+                                    display_output_with_history(
+                                        operation_type="Privilege Management",
+                                        result_df=result_df,
+                                        operation_details={
+                                            'input_file': uploaded_file.name,
+                                            'total_operations': len(df),
+                                            'processed_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                        }
                                     )
+                                else:
+                                    st.warning("⚠️ No result files found. The operation may have failed.")
                                 
                             except Exception as e:
                                 st.error(f"❌ Error during privilege management: {str(e)}")
@@ -713,53 +842,180 @@ def show_results_page():
         st.session_state.current_page = "🏠 Home"
         st.rerun()
     
-    st.header("📊 Results & Analytics")
+    st.header("📊 Results & Analytics Dashboard")
     
-    # Get all result files
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    result_files = []
+    # Create tabs for different views
+    tab_current, tab_history, tab_files = st.tabs(["🔄 Current Session", "📚 Session History", "📁 File Archive"])
     
-    for file in os.listdir(script_dir):
-        if file.endswith('.xlsx') and any(prefix in file for prefix in ['role_create_results_', 'role_copy_results_', 'duty_role_results_', 'privilege_results_']):
-            result_files.append(file)
-    
-    if not result_files:
-        st.info("📭 No result files found. Run some operations first to see results here.")
-        return
-    
-    # Show latest results
-    st.subheader("📈 Latest Results")
-    
-    for result_file in sorted(result_files, key=lambda x: os.path.getctime(os.path.join(script_dir, x)), reverse=True)[:5]:
-        try:
-            df = pd.read_excel(os.path.join(script_dir, result_file))
-            
-            # Create expander for each result file
-            with st.expander(f"📄 {result_file} ({len(df)} records)"):
-                st.dataframe(df)
-                
-                # Statistics
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Total Records", len(df))
-                with col2:
-                    success_count = len(df[df['Status'] == 'Success']) if 'Status' in df.columns else 0
-                    st.metric("Success", success_count)
-                with col3:
-                    failed_count = len(df[df['Status'] == 'Failed']) if 'Status' in df.columns else 0
-                    st.metric("Failed", failed_count)
-                
-                # Download button
-                csv = df.to_csv(index=False)
-                st.download_button(
-                    label=f"📥 Download {result_file}",
-                    data=csv,
-                    file_name=result_file.replace('.xlsx', '.csv'),
-                    mime="text/csv"
-                )
+    with tab_current:
+        st.subheader("🔄 Current Session Results")
         
+        if st.session_state.current_output:
+            output = st.session_state.current_output
+            
+            # Show detailed current output
+            st.markdown(f"""
+            **Operation:** {output['operation_type']}  
+            **Timestamp:** {output['timestamp']}  
+            **Total Records:** {output['total_records']}  
+            **Success Rate:** {output['success_count']}/{output['total_records']} ({output['success_count']/output['total_records']*100:.1f}%)
+            """)
+            
+            # Statistics dashboard
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total", output['total_records'])
+            with col2:
+                st.metric("Success", output['success_count'], delta=f"{output['success_count']/output['total_records']*100:.1f}%")
+            with col3:
+                st.metric("Failed", output['failed_count'])
+            with col4:
+                success_rate = output['success_count']/output['total_records']*100
+                color = "normal" if success_rate >= 80 else "inverse"
+                st.metric("Success Rate", f"{success_rate:.1f}%", delta_color=color)
+            
+            # Show the data
+            st.dataframe(output['result_df'], use_container_width=True)
+            
+            # Enhanced download options
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                csv = output['result_df'].to_csv(index=False)
+                st.download_button(
+                    label="📥 Download as CSV",
+                    data=csv,
+                    file_name=f"{output['operation_type'].lower().replace(' ', '_')}_{output['timestamp'].replace(':', '').replace('-', '').replace(' ', '_')}.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+            with col2:
+                # Download only successful records
+                if 'Status' in output['result_df'].columns:
+                    success_df = output['result_df'][output['result_df']['Status'] == 'Success']
+                    if len(success_df) > 0:
+                        success_csv = success_df.to_csv(index=False)
+                        st.download_button(
+                            label="✅ Download Success Only",
+                            data=success_csv,
+                            file_name=f"{output['operation_type'].lower().replace(' ', '_')}_success_{output['timestamp'].replace(':', '').replace('-', '').replace(' ', '_')}.csv",
+                            mime="text/csv",
+                            use_container_width=True
+                        )
+            with col3:
+                # Download only failed records
+                if 'Status' in output['result_df'].columns:
+                    failed_df = output['result_df'][output['result_df']['Status'] == 'Failed']
+                    if len(failed_df) > 0:
+                        failed_csv = failed_df.to_csv(index=False)
+                        st.download_button(
+                            label="❌ Download Failed Only",
+                            data=failed_csv,
+                            file_name=f"{output['operation_type'].lower().replace(' ', '_')}_failed_{output['timestamp'].replace(':', '').replace('-', '').replace(' ', '_')}.csv",
+                            mime="text/csv",
+                            use_container_width=True
+                        )
+        else:
+            st.info("🔍 No current results. Perform an operation to see results here.")
+    
+    with tab_history:
+        st.subheader("📚 Session History (Last 10 Operations)")
+        
+        if st.session_state.output_history:
+            # Summary stats
+            total_operations = len(st.session_state.output_history)
+            total_records = sum(op['total_records'] for op in st.session_state.output_history)
+            total_success = sum(op['success_count'] for op in st.session_state.output_history)
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Operations", total_operations)
+            with col2:
+                st.metric("Total Records", total_records)
+            with col3:
+                overall_success_rate = (total_success/total_records*100) if total_records > 0 else 0
+                st.metric("Overall Success Rate", f"{overall_success_rate:.1f}%")
+            
+            # Show each operation in history
+            for i, record in enumerate(st.session_state.output_history):
+                with st.expander(f"🔖 {record['operation_type']} - {record['timestamp']} (Success: {record['success_count']}/{record['total_records']})"):
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Total", record['total_records'])
+                    with col2:
+                        st.metric("Success", record['success_count'])
+                    with col3:
+                        st.metric("Failed", record['failed_count'])
+                    
+                    st.dataframe(record['result_df'], use_container_width=True)
+                    
+                    # Download from history
+                    csv_historical = record['result_df'].to_csv(index=False)
+                    st.download_button(
+                        label=f"📥 Download {record['operation_type']}",
+                        data=csv_historical,
+                        file_name=f"{record['operation_type'].lower().replace(' ', '_')}_{record['timestamp'].replace(':', '').replace('-', '').replace(' ', '_')}.csv",
+                        mime="text/csv",
+                        key=f"download_history_{i}"
+                    )
+        else:
+            st.info("🔍 No operations in session history. Complete some operations to see them here.")
+    
+    with tab_files:
+        st.subheader("📁 File Archive (Auto-saved Results)")
+        
+        # Get all result files from disk
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        result_files = []
+        
+        try:
+            for file in os.listdir(script_dir):
+                if file.endswith('.xlsx') and any(prefix in file for prefix in ['role_create_results_', 'role_copy_results_', 'duty_role_results_', 'privilege_results_']):
+                    result_files.append(file)
         except Exception as e:
-            st.error(f"❌ Error reading {result_file}: {str(e)}")
+            st.error(f"❌ Error accessing file directory: {str(e)}")
+        
+        if result_files:
+            st.info(f"📄 Found {len(result_files)} archived result files")
+            
+            # Show latest files
+            for result_file in sorted(result_files, key=lambda x: os.path.getctime(os.path.join(script_dir, x)), reverse=True)[:10]:
+                try:
+                    df = pd.read_excel(os.path.join(script_dir, result_file))
+                    file_size = os.path.getsize(os.path.join(script_dir, result_file))
+                    file_date = datetime.fromtimestamp(os.path.getctime(os.path.join(script_dir, result_file)))
+                    
+                    with st.expander(f"📄 {result_file} - {file_date.strftime('%Y-%m-%d %H:%M')} - {len(df)} records - {file_size/1024:.1f}KB"):
+                        
+                        # File info
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("Records", len(df))
+                        with col2:
+                            success_count = len(df[df['Status'] == 'Success']) if 'Status' in df.columns else 0
+                            st.metric("Success", success_count)
+                        with col3:
+                            failed_count = len(df[df['Status'] == 'Failed']) if 'Status' in df.columns else 0
+                            st.metric("Failed", failed_count)
+                        with col4:
+                            st.metric("File Size", f"{file_size/1024:.1f}KB")
+                        
+                        st.dataframe(df, use_container_width=True)
+                        
+                        # Download archived file
+                        csv = df.to_csv(index=False)
+                        st.download_button(
+                            label=f"📥 Download {result_file}",
+                            data=csv,
+                            file_name=result_file.replace('.xlsx', '.csv'),
+                            mime="text/csv",
+                            key=f"download_archive_{result_file}"
+                        )
+                
+                except Exception as e:
+                    st.error(f"❌ Error reading {result_file}: {str(e)}")
+        else:
+            st.info("📭 No archived result files found. Run some operations to create result files.")
 
 if __name__ == "__main__":
     main()
