@@ -467,40 +467,116 @@ def wait_for_step_transition(driver, expected_step, timeout=30):
 
 
 def click_next_button(driver, instance=1, max_retries=2):
+    """ENHANCED DEBUG VERSION - Let's see exactly what's happening"""
     for attempt in range(max_retries):
         try:
-            print(f"🔄 Attempting to click Next button (step {instance})")
+            print(f"\n🔄 === DEBUGGING NEXT BUTTON CLICK (step {instance}, attempt {attempt+1}) ===")
             
-            # Check current step before clicking
+            # 1. DETAILED PAGE STATE ANALYSIS
+            print("📋 STEP 1: Analyzing current page state...")
             current_step = get_current_step_number(driver)
             expected_next_step = current_step + 1
             print(f"📍 Currently at step {current_step}, expecting to go to step {expected_next_step}")
             
-            # Use robust element finding with multiple selectors
-            next_btn = find_element_robust(driver, [
+            # 2. CHECK ALL BUTTONS ON PAGE
+            print("📋 STEP 2: Finding ALL buttons on page...")
+            all_buttons = driver.find_elements(By.TAG_NAME, "button")
+            print(f"🔍 Found {len(all_buttons)} total buttons on page:")
+            for i, btn in enumerate(all_buttons[:10]):  # Show first 10 buttons
+                try:
+                    btn_id = btn.get_attribute('id') or 'NO_ID'
+                    btn_text = btn.text.strip() or 'NO_TEXT'
+                    btn_title = btn.get_attribute('title') or 'NO_TITLE'
+                    btn_visible = btn.is_displayed()
+                    btn_enabled = btn.is_enabled()
+                    print(f"  Button {i+1}: ID='{btn_id}', Text='{btn_text}', Title='{btn_title}', Visible={btn_visible}, Enabled={btn_enabled}")
+                except:
+                    print(f"  Button {i+1}: ERROR reading attributes")
+            
+            # 3. CHECK FOR POPUPS
+            print("📋 STEP 3: Checking for popups...")
+            popups = driver.find_elements(By.CSS_SELECTOR, "div.AFPopupSelector, div[id*='popup'], div[id*='msgDlg']")
+            print(f"🔍 Found {len(popups)} popups on page")
+            for i, popup in enumerate(popups):
+                try:
+                    popup_id = popup.get_attribute('id') or 'NO_ID'
+                    popup_visible = popup.is_displayed()
+                    print(f"  Popup {i+1}: ID='{popup_id}', Visible={popup_visible}")
+                except:
+                    print(f"  Popup {i+1}: ERROR reading attributes")
+            
+            # 4. FIND NEXT BUTTON WITH DETAILED LOGGING
+            print("📋 STEP 4: Finding Next button with detailed selector testing...")
+            selectors = [
                 (By.XPATH, "//button[contains(@id, 'cb4') and contains(., 'Next')]"),
                 (By.XPATH, "//button[contains(., 'Next')]"),
                 (By.XPATH, "//button[@title='Next']"),
                 (By.XPATH, "//button[text()='Next']")
-            ], timeout=10)
+            ]
             
-            # Get the actual button ID for logging
+            next_btn = None
+            for i, selector in enumerate(selectors):
+                try:
+                    print(f"🔍 Testing selector {i+1}: {selector[1]}")
+                    elements = driver.find_elements(selector[0], selector[1])
+                    print(f"  Found {len(elements)} elements")
+                    for j, elem in enumerate(elements):
+                        elem_id = elem.get_attribute('id') or 'NO_ID'
+                        elem_text = elem.text.strip() or 'NO_TEXT'
+                        elem_title = elem.get_attribute('title') or 'NO_TITLE'
+                        elem_visible = elem.is_displayed()
+                        elem_enabled = elem.is_enabled()
+                        print(f"    Element {j+1}: ID='{elem_id}', Text='{elem_text}', Title='{elem_title}', Visible={elem_visible}, Enabled={elem_enabled}")
+                        if next_btn is None and elem_visible and elem_enabled:
+                            next_btn = elem
+                            print(f"    ✅ SELECTED this element as Next button")
+                except Exception as e:
+                    print(f"  ❌ Selector {i+1} failed: {str(e)}")
+            
+            if next_btn is None:
+                raise Exception("❌ No suitable Next button found!")
+            
+            # 5. DETAILED BUTTON ANALYSIS
+            print("📋 STEP 5: Analyzing selected Next button...")
             btn_id = next_btn.get_attribute('id')
-            print(f"✅ Found Next button: {btn_id}")
+            btn_text = next_btn.text.strip()
+            btn_title = next_btn.get_attribute('title')
+            btn_class = next_btn.get_attribute('class')
+            btn_onclick = next_btn.get_attribute('onclick')
+            print(f"✅ Selected Next button details:")
+            print(f"  ID: '{btn_id}'")
+            print(f"  Text: '{btn_text}'")
+            print(f"  Title: '{btn_title}'")
+            print(f"  Class: '{btn_class}'")
+            print(f"  OnClick: '{btn_onclick}'")
             
-            # Wait for button to be clickable (not disabled)
-            WebDriverWait(driver, 5).until(
-                EC.element_to_be_clickable((By.ID, btn_id))
-            )
-            print(f"✅ Next button is clickable")
+            # 6. SAFETY CHECK
+            print("📋 STEP 6: Safety validation...")
+            if 'cancel' in btn_text.lower() or 'cancel' in btn_title.lower():
+                raise Exception(f"❌ SAFETY ABORT: This is a Cancel button! Text='{btn_text}', Title='{btn_title}'")
+            if 'rhSrCan' in btn_id:
+                raise Exception(f"❌ SAFETY ABORT: This is the popup Cancel button! ID='{btn_id}'")
+            print("✅ Safety check passed")
             
-            # Click the button
+            # 7. CLICK THE BUTTON
+            print("📋 STEP 7: Clicking the button...")
             driver.execute_script("arguments[0].click();", next_btn)
-            print(f"✓ Clicked Next button successfully")
+            print(f"✓ Clicked button successfully")
             
-            # Use robust navigation train-based transition detection
+            # 8. IMMEDIATE POST-CLICK ANALYSIS
+            print("📋 STEP 8: Post-click analysis...")
+            time.sleep(1)  # Brief pause to see immediate effects
+            current_step_after = get_current_step_number(driver)
+            print(f"📍 Step after click: {current_step_after} (was {current_step}, expected {expected_next_step})")
+            
+            # Check if any new popups appeared after click
+            post_click_popups = driver.find_elements(By.CSS_SELECTOR, "div.AFPopupSelector, div[id*='popup'], div[id*='msgDlg']")
+            print(f"🔍 Popups after click: {len(post_click_popups)}")
+            
+            print("📋 STEP 9: Waiting for navigation transition...")
             if wait_for_step_transition(driver, expected_next_step, timeout=30):
-                print(f"✓ Step {instance} transition completed successfully")
+                print(f"✅ Step {instance} transition completed successfully")
+                print("=" * 80)
                 return True
             else:
                 # If train navigation failed, try one more time with longer wait
@@ -510,14 +586,16 @@ def click_next_button(driver, instance=1, max_retries=2):
                 # Check again
                 final_step = get_current_step_number(driver)
                 if final_step == expected_next_step:
-                    print(f"✓ Step {instance} transition completed (delayed)")
+                    print(f"✅ Step {instance} transition completed (delayed)")
+                    print("=" * 80)
                     return True
                 elif final_step > expected_next_step:
                     print(f"⚠️ Navigation overshot! Currently at step {final_step}, expected {expected_next_step}")
-                    print(f"🔄 This may cause duty role operations to happen on wrong page!")
-                    # Still return True but with warning - we'll add verification later
+                    print("=" * 80)
                     return True
                 else:
+                    print(f"❌ Navigation failed: still at step {final_step}, expected {expected_next_step}")
+                    print("=" * 80)
                     raise Exception(f"Navigation failed: still at step {final_step}, expected {expected_next_step}")
                 
         except StaleElementReferenceException:
@@ -526,10 +604,12 @@ def click_next_button(driver, instance=1, max_retries=2):
             print(f"🔄 Stale element, retrying... (attempt {attempt + 1})")
             time.sleep(1)
         except Exception as e:
+            print(f"❌ Attempt {attempt + 1} failed: {str(e)}")
+            print("=" * 80)
             if attempt == max_retries - 1:
                 print(f"❌ Failed to click Next button after {max_retries} attempts: {str(e)}")
                 raise
-            print(f"🔄 Retrying... (attempt {attempt + 1}): {str(e)}")
+            print(f"🔄 Retrying... (attempt {attempt + 1})")
             time.sleep(1)
     
     return False
@@ -749,8 +829,25 @@ def add_duty_role(driver, existing_role_name, existing_role_code, duty_role_name
         driver.execute_script("arguments[0].click();", add_membership_btn)
         print("✓ 'Add Role Membership' action confirmed")
         
-        # CRITICAL: Check for Oracle warning/error popups after add attempt
-        time.sleep(2)  # Give Oracle time to process and show any warnings
+        # CRITICAL: IMMEDIATELY close the Add Role Membership popup to prevent interference
+        time.sleep(2)  # Give Oracle time to process the addition
+        print("🔄 Immediately closing Add Role Membership popup...")
+        
+        try:
+            # Close the popup immediately after adding
+            close_btn = find_element_robust(driver, [
+                (By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:4:rhSp1:d1::close"),
+                (By.XPATH, "//a[contains(@id, 'd1::close')]"),
+                (By.XPATH, "//a[@title='Close']"),
+                (By.XPATH, "//div[contains(@id, 'rhSrchPu::popup-container')]//a[contains(@id, '::close')]")
+            ], timeout=10)
+            driver.execute_script("arguments[0].click();", close_btn)
+            print("✓ Add Role Membership popup closed immediately")
+            time.sleep(2)  # Allow popup to fully close
+        except Exception as close_error:
+            print(f"⚠️ Failed to close popup immediately: {str(close_error)}")
+        
+        # NOW check for Oracle warning/error popups after add attempt
         has_popup, popup_message, popup_type = check_for_oracle_popup_messages(driver, "duty role addition")
         
         if has_popup:
@@ -772,15 +869,19 @@ def add_duty_role(driver, existing_role_name, existing_role_code, duty_role_name
             else:
                 raise Exception(f"Oracle Message ({popup_type}): {popup_message}")
 
-        # [11] Click on the Close button in the pop-up
-        close_btn = find_element_robust(driver, [
-            (By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:4:rhSp1:d1::close"),
-            (By.XPATH, "//a[contains(@id, 'd1::close')]"),
-            (By.XPATH, "//a[@title='Close']"),
-            (By.XPATH, "//div[contains(@id, 'rhSrchPu::popup-container')]//a[contains(@id, '::close')]")
-        ], timeout=10)
-        driver.execute_script("arguments[0].click();", close_btn)
-        print("✓ Pop-up closed")
+        # [11] Popup already closed immediately after adding - no need to close again
+        print("✓ Popup was already closed immediately after adding duty role")
+        
+        # SIMPLE: Close any remaining popups before navigation
+        try:
+            time.sleep(2)  # Brief pause for popup to close
+            remaining_popups = driver.find_elements(By.CSS_SELECTOR, "div.AFPopupSelector")
+            if remaining_popups:
+                print("⚠️ Closing remaining popups before navigation...")
+                dismiss_oracle_popup(driver, "pre-navigation")
+                time.sleep(1)
+        except:
+            pass  # Continue even if popup closure fails
 
         # [12] Navigate through final steps with robust train navigation
         initial_step = get_current_step_number(driver)
@@ -833,6 +934,33 @@ def add_duty_role(driver, existing_role_name, existing_role_code, duty_role_name
         ], timeout=10)
         driver.execute_script("arguments[0].click();", ok_button)
         print("✓ Save and Close confirmed")
+        
+        # CRITICAL: Wait for popup to fully close and navigate back to main page
+        time.sleep(3)  # Allow popup to close completely
+        
+        # Check if we're still on role editing page and navigate back
+        try:
+            # If we're still in role editing, we need to cancel/close out
+            cancel_buttons = driver.find_elements(By.XPATH, "//button[contains(., 'Cancel') or contains(@title, 'Cancel')]")
+            if cancel_buttons:
+                print("⚠️ Still on role editing page - clicking Cancel to return to main page")
+                for cancel_btn in cancel_buttons[:2]:  # Try first 2 cancel buttons
+                    try:
+                        if cancel_btn.is_displayed() and cancel_btn.is_enabled():
+                            driver.execute_script("arguments[0].click();", cancel_btn)
+                            time.sleep(2)
+                            print("✓ Clicked Cancel to exit role editing")
+                            break
+                    except:
+                        continue
+        except Exception as nav_error:
+            print(f"⚠️ Navigation cleanup failed: {str(nav_error)}")
+        
+        # Force return to main page
+        print("🔄 Ensuring return to main Security Console page...")
+        driver.get(SECURITY_CONSOLE_URL)
+        time.sleep(3)
+        print("✅ Returned to main page")
 
         print("✅ Duty role membership addition completed successfully")
         return confirmation_message
@@ -1080,6 +1208,16 @@ def delete_duty_role(driver, existing_role_name, existing_role_code, duty_role_c
                 print(f"🔴 Delete confirmation failed: {str(e)}")
                 raise
         
+        # SIMPLE: Close any remaining popups before navigation
+        try:
+            time.sleep(2)  # Brief pause for popup to close
+            remaining_popups = driver.find_elements(By.CSS_SELECTOR, "div.AFPopupSelector")
+            if remaining_popups:
+                print("⚠️ Closing remaining popups before navigation...")
+                dismiss_oracle_popup(driver, "pre-navigation")
+                time.sleep(1)
+        except:
+            pass  # Continue even if popup closure fails
 
         # [10] Navigate through final steps with robust train navigation
         initial_step = get_current_step_number(driver)
@@ -1132,6 +1270,33 @@ def delete_duty_role(driver, existing_role_name, existing_role_code, duty_role_c
         ], timeout=10)
         driver.execute_script("arguments[0].click();", ok_button)
         print("✓ Save and Close confirmed")
+        
+        # CRITICAL: Wait for popup to fully close and navigate back to main page
+        time.sleep(3)  # Allow popup to close completely
+        
+        # Check if we're still on role editing page and navigate back
+        try:
+            # If we're still in role editing, we need to cancel/close out
+            cancel_buttons = driver.find_elements(By.XPATH, "//button[contains(., 'Cancel') or contains(@title, 'Cancel')]")
+            if cancel_buttons:
+                print("⚠️ Still on role editing page - clicking Cancel to return to main page")
+                for cancel_btn in cancel_buttons[:2]:  # Try first 2 cancel buttons
+                    try:
+                        if cancel_btn.is_displayed() and cancel_btn.is_enabled():
+                            driver.execute_script("arguments[0].click();", cancel_btn)
+                            time.sleep(2)
+                            print("✓ Clicked Cancel to exit role editing")
+                            break
+                    except:
+                        continue
+        except Exception as nav_error:
+            print(f"⚠️ Navigation cleanup failed: {str(nav_error)}")
+        
+        # Force return to main page
+        print("🔄 Ensuring return to main Security Console page...")
+        driver.get(SECURITY_CONSOLE_URL)
+        time.sleep(3)
+        print("✅ Returned to main page")
 
         print("✅ Duty role deletion completed successfully")
         return confirmation_message
@@ -1266,11 +1431,8 @@ def main():
             except Exception as save_error:
                 print(f"⚠️ Failed to save progress: {str(save_error)}")
             
-            # Reset to main page after each row (success or failure)
-            if current_status == 'Success':
-                driver.get(SECURITY_CONSOLE_URL)
-                time.sleep(2)
-            # Note: Browser state is already reset above for failures
+            # Note: Page reset is now handled within add_duty_role/delete_duty_role functions
+            # Browser state is reset above for failures via reset_browser_state()
 
         output_file = f"duty_role_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         df.to_excel(output_file, index=False)

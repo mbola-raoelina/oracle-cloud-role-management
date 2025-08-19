@@ -87,16 +87,20 @@ def main():
     # Header
     st.markdown('<h1 class="main-header">🔐 Oracle Cloud Role Management Automation</h1>', unsafe_allow_html=True)
     
-    # Initialize session state for navigation
+    # Initialize session state for navigation and connection
     if 'current_page' not in st.session_state:
         st.session_state.current_page = "🏠 Home"
+    if 'is_connected' not in st.session_state:
+        st.session_state.is_connected = False
+    if 'connection_details' not in st.session_state:
+        st.session_state.connection_details = {}
     
     # Sidebar for navigation
     st.sidebar.title("Navigation")
     page = st.sidebar.selectbox(
         "Choose Operation",
-        ["🏠 Home", "➕ Create Role", "📋 Copy Role", "👥 Duty Role Management", "🔑 Privilege Management", "🔧 Diagnostics", "📊 Results"],
-        index=["🏠 Home", "➕ Create Role", "📋 Copy Role", "👥 Duty Role Management", "🔑 Privilege Management", "🔧 Diagnostics", "📊 Results"].index(st.session_state.current_page)
+        ["🏠 Home", "➕ Create Role", "📋 Copy Role", "👥 Duty Role Management", "🔑 Privilege Management", "📊 Results"],
+        index=["🏠 Home", "➕ Create Role", "📋 Copy Role", "👥 Duty Role Management", "🔑 Privilege Management", "📊 Results"].index(st.session_state.current_page)
     )
     
     # Update session state when sidebar selection changes
@@ -104,205 +108,130 @@ def main():
         st.session_state.current_page = page
         st.rerun()
     
+    # Connection status display
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔐 Connection Status")
+    
+    if st.session_state.is_connected:
+        st.sidebar.success("✅ Connected")
+        st.sidebar.info(f"**User:** {st.session_state.connection_details.get('username', 'Unknown')}")
+        st.sidebar.info(f"**Environment:** {st.session_state.connection_details.get('environment', 'Unknown')}")
+        st.sidebar.info(f"**Connected:** {st.session_state.connection_details.get('connected_at', 'Unknown')}")
+        
+        if st.sidebar.button("🔌 Disconnect"):
+            st.session_state.is_connected = False
+            st.session_state.connection_details = {}
+            st.sidebar.success("✅ Disconnected successfully!")
+            st.rerun()
+    else:
+        st.sidebar.error("❌ Not Connected")
+    
     # Environment variables setup
     st.sidebar.markdown("---")
     st.sidebar.subheader("🔧 Configuration")
     
-    # Environment selection
-    environment = st.sidebar.selectbox(
-        "Oracle Environment",
-        ["dev1", "dev2", "dev3"],
-        help="Select your Oracle Cloud environment"
-    )
+    # Show connection form only if not connected
+    if not st.session_state.is_connected:
+        # Environment selection
+        environment = st.sidebar.selectbox(
+            "Oracle Environment",
+            ["dev1", "dev2", "dev3"],
+            help="Select your Oracle Cloud environment"
+        )
+        
+        # Environment variables input
+        username = st.sidebar.text_input("Oracle Username", type="default", help="Your Oracle Cloud username")
+        password = st.sidebar.text_input("Oracle Password", type="password", help="Your Oracle Cloud password")
+        
+        # Connect button
+        if username and password:
+            if st.sidebar.button("🔗 Connect", help="Connect to Oracle Cloud"):
+                st.sidebar.success("✅ Connected successfully!")
+                st.session_state.is_connected = True
+                st.session_state.connection_details = {
+                    'username': username,
+                    'password': password,  # Store for local development
+                    'environment': environment,
+                    'connected_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+                # Set environment variables for the automation scripts
+                os.environ["BIP_USERNAME"] = username
+                os.environ["BIP_PASSWORD"] = password
+                os.environ["ORACLE_ENVIRONMENT"] = environment
+                st.rerun()
+    else:
+        # Use stored connection details for environment variables
+        os.environ["BIP_USERNAME"] = st.session_state.connection_details.get('username', '')
+        os.environ["BIP_PASSWORD"] = st.session_state.connection_details.get('password', '')
+        os.environ["ORACLE_ENVIRONMENT"] = st.session_state.connection_details.get('environment', 'dev1')
     
-    # Environment variables input
-    username = st.sidebar.text_input("Oracle Username", type="default", help="Your Oracle Cloud username")
-    password = st.sidebar.text_input("Oracle Password", type="password", help="Your Oracle Cloud password")
-    
-    # Connect button
-    if username and password:
-        if st.sidebar.button("🔗 Connect", help="Connect to Oracle Cloud"):
-            with st.spinner("Connecting..."):
-                try:
-                    # Import test function
-                    from selenium import webdriver
-                    from selenium.webdriver.chrome.service import Service
-                    from selenium.webdriver.common.by import By
-                    from selenium.webdriver.support.ui import WebDriverWait, Select
-                    from selenium.webdriver.support import expected_conditions as EC
-                    from webdriver_manager.chrome import ChromeDriverManager
-                    
-                    # Set up driver with optimized options for faster startup
-                    options = webdriver.ChromeOptions()
-                    options.add_argument("--headless")  # Run in background
-                    options.add_argument("--no-sandbox")
-                    options.add_argument("--disable-dev-shm-usage")
-                    options.add_argument("--disable-gpu")
-                    options.add_argument("--disable-blink-features=AutomationControlled")
-                    options.add_argument("--disable-extensions")
-                    options.add_argument("--disable-plugins")
-                    options.add_argument("--disable-images")
-                    # options.add_argument("--disable-javascript")  # Removed - breaks login process
-                    options.add_argument("--disable-web-security")
-                    options.add_argument("--disable-features=VizDisplayCompositor")
-                    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-                    options.add_experimental_option('useAutomationExtension', False)
-                    options.add_experimental_option("prefs", {
-                        "profile.default_content_setting_values.notifications": 2,
-                        "profile.default_content_settings.popups": 0
-                    })
-                    
-                    # Build URL based on environment
-                    base_url = f"https://iabbzv-{environment}.fa.ocs.oraclecloud.com"
-                    security_console_url = f"{base_url}/hcmUI/faces/FndOverview?fnd=%3B%3B%3B%3Bfalse%3B256%3B%3B%3B&fndGlobalItemNodeId=ASE_FUSE_SECURITY_CONSOLE"
-                    
-                    # Initialize driver with robust settings
-                    try:
-                        from chromedriver_fix import initialize_driver_robust
-                        driver = initialize_driver_robust()
-                    except Exception as driver_error:
-                        st.sidebar.error("❌ Connection failed: ChromeDriver error")
-                        return
-                    
-                    try:
-                        # Navigate to login page
-                        driver.get(security_console_url)
-                        time.sleep(2)
-                        
-                        # Try multiple selectors for username field
-                        username_field = None
-                        username_selectors = [
-                            (By.ID, "userid"),
-                            (By.ID, "username"),
-                            (By.NAME, "userid"),
-                            (By.NAME, "username"),
-                            (By.CSS_SELECTOR, "input[type='text']"),
-                            (By.CSS_SELECTOR, "input[placeholder*='user']"),
-                            (By.CSS_SELECTOR, "input[placeholder*='User']")
-                        ]
-                        
-                        for selector_type, selector_value in username_selectors:
-                            try:
-                                username_field = WebDriverWait(driver, 3).until(
-                                    EC.presence_of_element_located((selector_type, selector_value))
-                                )
-                                break
-                            except:
-                                continue
-                        
-                        if not username_field:
-                            st.sidebar.error("❌ Connection failed: Invalid environment")
-                            return
-                        
-                        # Try multiple selectors for password field
-                        password_field = None
-                        password_selectors = [
-                            (By.ID, "password"),
-                            (By.NAME, "password"),
-                            (By.CSS_SELECTOR, "input[type='password']")
-                        ]
-                        
-                        for selector_type, selector_value in password_selectors:
-                            try:
-                                password_field = driver.find_element(selector_type, selector_value)
-                                break
-                            except:
-                                continue
-                        
-                        if not password_field:
-                            st.sidebar.error("❌ Connection failed: Invalid environment")
-                            return
-                        
-                        # Enter credentials
-                        username_field.clear()
-                        username_field.send_keys(username)
-                        password_field.clear()
-                        password_field.send_keys(password)
-                        
-                        # Try multiple selectors for login button
-                        login_button = None
-                        login_selectors = [
-                            (By.ID, "btnActive"),
-                            (By.ID, "login-button"),
-                            (By.CSS_SELECTOR, "button[type='submit']"),
-                            (By.CSS_SELECTOR, "input[type='submit']"),
-                            (By.XPATH, "//button[contains(text(), 'Sign In')]"),
-                            (By.XPATH, "//button[contains(text(), 'Login')]"),
-                            (By.XPATH, "//input[@value='Sign In']"),
-                            (By.XPATH, "//input[@value='Login']")
-                        ]
-                        
-                        for selector_type, selector_value in login_selectors:
-                            try:
-                                login_button = driver.find_element(selector_type, selector_value)
-                                break
-                            except:
-                                continue
-                        
-                        if not login_button:
-                            st.sidebar.error("❌ Connection failed: Invalid environment")
-                            return
-                        
-                        # Submit form
-                        login_button.click()
-                        time.sleep(3)
-                        
-                        # Check if login was successful
-                        current_url = driver.current_url
-                        
-                        # Simple check: if we're still on login page, it failed
-                        if "login" in current_url.lower() or "connexion" in driver.title.lower():
-                            st.sidebar.error("❌ Connection failed: Invalid credentials")
-                        # If we're on Oracle Cloud page, it succeeded
-                        elif "iabbzv-dev" in current_url and "hcmUI" in current_url:
-                            st.sidebar.success("✅ Connected successfully!")
-                        else:
-                            st.sidebar.error("❌ Connection failed: Invalid environment")
-                    
-                    finally:
-                        driver.quit()
-                        
-                except Exception as e:
-                    st.sidebar.error("❌ Connection failed: System error")
-    
-    # Save credentials and environment to environment variables
-    if username and password:
-        os.environ["BIP_USERNAME"] = username
-        os.environ["BIP_PASSWORD"] = password
-        os.environ["ORACLE_ENVIRONMENT"] = environment
-    
-    # Home page
+    # Page routing with authentication gates
     if st.session_state.current_page == "🏠 Home":
         show_home_page()
-    
-    # Create Role page
     elif st.session_state.current_page == "➕ Create Role":
-        show_create_role_page()
-    
-    # Copy Role page
+        if st.session_state.is_connected:
+            show_create_role_page()
+        else:
+            show_connection_required_page("Create Role")
     elif st.session_state.current_page == "📋 Copy Role":
-        show_copy_role_page()
-    
-    # Duty Role Management page
+        if st.session_state.is_connected:
+            show_copy_role_page()
+        else:
+            show_connection_required_page("Copy Role")
     elif st.session_state.current_page == "👥 Duty Role Management":
-        show_duty_role_page()
-    
-    # Privilege Management page
+        if st.session_state.is_connected:
+            show_duty_role_page()
+        else:
+            show_connection_required_page("Duty Role Management")
     elif st.session_state.current_page == "🔑 Privilege Management":
-        show_privilege_management_page()
-    
-    # Diagnostics page
-    elif st.session_state.current_page == "🔧 Diagnostics":
-        show_diagnostics_page()
-    
-    # Results page
+        if st.session_state.is_connected:
+            show_privilege_management_page()
+        else:
+            show_connection_required_page("Privilege Management")
     elif st.session_state.current_page == "📊 Results":
-        show_results_page()
+        if st.session_state.is_connected:
+            show_results_page()
+        else:
+            show_connection_required_page("Results")
+
+def show_connection_required_page(feature_name):
+    """Display a page requiring connection for protected features"""
+    st.markdown(f"""
+    <div class="error-message">
+        <h2>🔒 Authentication Required</h2>
+        <p>You must be connected to Oracle Cloud to access <strong>{feature_name}</strong>.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("### 🔐 How to Connect")
+    st.markdown("""
+    1. **Enter your Oracle Cloud credentials** in the sidebar
+    2. **Select your environment** (dev1, dev2, or dev3)
+    3. **Click the Connect button** to establish connection
+    4. **Once connected**, you can access all management features
+    """)
 
 def show_home_page():
+    # Show connection status prominently
+    if st.session_state.is_connected:
+        st.markdown(f"""
+        <div class="success-message">
+            <h2>✅ Connected to Oracle Cloud</h2>
+            <p>Welcome <strong>{st.session_state.connection_details.get('username', 'User')}</strong>! You are connected to <strong>{st.session_state.connection_details.get('environment', 'Unknown')}</strong> environment.</p>
+            <p>All management features are now available.</p>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div class="error-message">
+            <h2>🔒 Not Connected</h2>
+            <p>Please connect to Oracle Cloud using the sidebar to access management features.</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
     st.markdown("""
     <div class="feature-card">
-        <h2>🚀 Welcome to Oracle Cloud Role Management Automation</h2>
+        <h2>🚀 Oracle Cloud Role Management Automation</h2>
         <p>This application provides a comprehensive solution for managing Oracle Cloud roles and privileges through an intuitive web interface.</p>
     </div>
     """, unsafe_allow_html=True)
@@ -312,10 +241,13 @@ def show_home_page():
     col1, col2 = st.columns(2)
     
     with col1:
-        # Create Role Card - Clickable
-        if st.button("➕ Create Role", key="home_create_role", use_container_width=True):
-            st.session_state.current_page = "➕ Create Role"
-            st.rerun()
+        # Create Role Card - Only clickable when connected
+        if st.session_state.is_connected:
+            if st.button("➕ Create Role", key="home_create_role", use_container_width=True):
+                st.session_state.current_page = "➕ Create Role"
+                st.rerun()
+        else:
+            st.button("🔒 Create Role", key="home_create_role_disabled", use_container_width=True, disabled=True, help="Connect to Oracle Cloud to access this feature")
         
         st.markdown("""
         <div class="feature-card" style="margin-top: 10px;">
@@ -329,10 +261,13 @@ def show_home_page():
         </div>
         """, unsafe_allow_html=True)
         
-        # Copy Role Card - Clickable
-        if st.button("📋 Copy Role", key="home_copy_role", use_container_width=True):
-            st.session_state.current_page = "📋 Copy Role"
-            st.rerun()
+        # Copy Role Card - Only clickable when connected
+        if st.session_state.is_connected:
+            if st.button("📋 Copy Role", key="home_copy_role", use_container_width=True):
+                st.session_state.current_page = "📋 Copy Role"
+                st.rerun()
+        else:
+            st.button("🔒 Copy Role", key="home_copy_role_disabled", use_container_width=True, disabled=True, help="Connect to Oracle Cloud to access this feature")
         
         st.markdown("""
         <div class="feature-card" style="margin-top: 10px;">
@@ -347,10 +282,13 @@ def show_home_page():
         """, unsafe_allow_html=True)
     
     with col2:
-        # Duty Role Management Card - Clickable
-        if st.button("👥 Duty Role Management", key="home_duty_role", use_container_width=True):
-            st.session_state.current_page = "👥 Duty Role Management"
-            st.rerun()
+        # Duty Role Management Card - Only clickable when connected
+        if st.session_state.is_connected:
+            if st.button("👥 Duty Role Management", key="home_duty_role", use_container_width=True):
+                st.session_state.current_page = "👥 Duty Role Management"
+                st.rerun()
+        else:
+            st.button("🔒 Duty Role Management", key="home_duty_role_disabled", use_container_width=True, disabled=True, help="Connect to Oracle Cloud to access this feature")
         
         st.markdown("""
         <div class="feature-card" style="margin-top: 10px;">
@@ -364,10 +302,13 @@ def show_home_page():
         </div>
         """, unsafe_allow_html=True)
         
-        # Privilege Management Card - Clickable
-        if st.button("🔑 Privilege Management", key="home_privilege", use_container_width=True):
-            st.session_state.current_page = "🔑 Privilege Management"
-            st.rerun()
+        # Privilege Management Card - Only clickable when connected
+        if st.session_state.is_connected:
+            if st.button("🔑 Privilege Management", key="home_privilege", use_container_width=True):
+                st.session_state.current_page = "🔑 Privilege Management"
+                st.rerun()
+        else:
+            st.button("🔒 Privilege Management", key="home_privilege_disabled", use_container_width=True, disabled=True, help="Connect to Oracle Cloud to access this feature")
         
         st.markdown("""
         <div class="feature-card" style="margin-top: 10px;">
@@ -380,23 +321,6 @@ def show_home_page():
             </ul>
         </div>
         """, unsafe_allow_html=True)
-    
-    # Diagnostics Card - Clickable
-    if st.button("🔧 Diagnostics", key="home_diagnostics", use_container_width=True):
-        st.session_state.current_page = "🔧 Diagnostics"
-        st.rerun()
-    
-    st.markdown("""
-    <div class="feature-card" style="margin-top: 10px;">
-        <h3>🔧 Diagnostics</h3>
-        <p>Diagnose ChromeDriver and system issues. Test connections and troubleshoot deployment problems.</p>
-        <ul>
-            <li>System diagnostics</li>
-            <li>ChromeDriver testing</li>
-            <li>Connection troubleshooting</li>
-        </ul>
-    </div>
-    """, unsafe_allow_html=True)
     
     # System Status
     st.markdown("---")
@@ -413,6 +337,7 @@ def show_home_page():
     with col3:
         st.info("✅ **Multi-Environment**: Support for dev1, dev2, dev3")
 
+# Full functional page implementations
 def show_create_role_page():
     # Back to Home button
     if st.button("🏠 Back to Home", key="create_role_back"):
@@ -781,151 +706,6 @@ def show_privilege_management_page():
         
         except Exception as e:
             st.error(f"❌ Error reading file: {str(e)}")
-
-def show_diagnostics_page():
-    # Back to Home button
-    if st.button("🏠 Back to Home", key="diagnostics_back"):
-        st.session_state.current_page = "🏠 Home"
-        st.rerun()
-    
-    st.header("🔧 System Diagnostics")
-    
-    st.markdown("""
-    <div class="info-message">
-        <strong>Purpose:</strong> This page helps diagnose ChromeDriver and system issues on Streamlit Cloud deployment.
-        Run diagnostics to understand what's happening with the ChromeDriver setup.
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Run diagnostics button
-    if st.button("🔍 Run System Diagnostics", key="run_diagnostics"):
-        with st.spinner("Running diagnostics..."):
-            try:
-                # Capture diagnostic output
-                import subprocess
-                import sys
-                import io
-                
-                # Redirect stdout to capture output
-                old_stdout = sys.stdout
-                new_stdout = io.StringIO()
-                sys.stdout = new_stdout
-                
-                try:
-                    # Import and run diagnostics
-                    from diagnose_chromedriver import main as run_diagnostics
-                    run_diagnostics()
-                    
-                    # Get the output
-                    diagnostic_output = new_stdout.getvalue()
-                    
-                    # Display results
-                    st.subheader("📊 Diagnostic Results")
-                    st.code(diagnostic_output, language="text")
-                    
-                    # Save diagnostic results
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    diagnostic_file = f"diagnostic_results_{timestamp}.txt"
-                    
-                    with open(diagnostic_file, 'w') as f:
-                        f.write(diagnostic_output)
-                    
-                    st.success(f"✅ Diagnostics completed! Results saved to {diagnostic_file}")
-                    
-                    # Download button for diagnostic results
-                    st.download_button(
-                        label="📥 Download Diagnostic Results",
-                        data=diagnostic_output,
-                        file_name=diagnostic_file,
-                        mime="text/plain"
-                    )
-                    
-                finally:
-                    # Restore stdout
-                    sys.stdout = old_stdout
-                    
-            except Exception as e:
-                st.error(f"❌ Error running diagnostics: {str(e)}")
-                st.error("This might indicate that the diagnostic script is not available or has issues.")
-    
-    # ChromeDriver test button
-    st.markdown("---")
-    st.subheader("🧪 ChromeDriver Test")
-    
-    if st.button("🚀 Test ChromeDriver Initialization", key="test_chromedriver"):
-        with st.spinner("Testing ChromeDriver..."):
-            try:
-                # Import and test ChromeDriver
-                from chromedriver_fix import test_chromedriver
-                
-                # Capture output
-                import io
-                import sys
-                old_stdout = sys.stdout
-                new_stdout = io.StringIO()
-                sys.stdout = new_stdout
-                
-                try:
-                    success = test_chromedriver()
-                    
-                    # Get the output
-                    test_output = new_stdout.getvalue()
-                    
-                    # Display results
-                    st.subheader("📊 ChromeDriver Test Results")
-                    st.code(test_output, language="text")
-                    
-                    if success:
-                        st.success("✅ ChromeDriver test passed!")
-                    else:
-                        st.error("❌ ChromeDriver test failed!")
-                        
-                finally:
-                    # Restore stdout
-                    sys.stdout = old_stdout
-                    
-            except Exception as e:
-                st.error(f"❌ Error testing ChromeDriver: {str(e)}")
-    
-    # Manual ChromeDriver download test
-    st.markdown("---")
-    st.subheader("📥 Manual ChromeDriver Download Test")
-    
-    chrome_version = st.text_input("Chrome Version (e.g., 120.0.6099.224)", value="120.0.6099.224")
-    
-    if st.button("🔍 Test ChromeDriver Download", key="test_download"):
-        with st.spinner("Testing ChromeDriver download..."):
-            try:
-                from chromedriver_fix import download_chromedriver_for_version
-                
-                # Capture output
-                import io
-                import sys
-                old_stdout = sys.stdout
-                new_stdout = io.StringIO()
-                sys.stdout = new_stdout
-                
-                try:
-                    chromedriver_path = download_chromedriver_for_version(chrome_version)
-                    
-                    # Get the output
-                    download_output = new_stdout.getvalue()
-                    
-                    # Display results
-                    st.subheader("📊 Download Test Results")
-                    st.code(download_output, language="text")
-                    
-                    if chromedriver_path:
-                        st.success(f"✅ ChromeDriver downloaded successfully to: {chromedriver_path}")
-                    else:
-                        st.error("❌ ChromeDriver download failed!")
-                        
-                finally:
-                    # Restore stdout
-                    sys.stdout = old_stdout
-                    
-            except Exception as e:
-                st.error(f"❌ Error testing download: {str(e)}")
 
 def show_results_page():
     # Back to Home button
