@@ -829,23 +829,39 @@ def add_duty_role(driver, existing_role_name, existing_role_code, duty_role_name
         driver.execute_script("arguments[0].click();", add_membership_btn)
         print("✓ 'Add Role Membership' action confirmed")
         
-        # CRITICAL: IMMEDIATELY close the Add Role Membership popup to prevent interference
-        time.sleep(2)  # Give Oracle time to process the addition
-        print("🔄 Immediately closing Add Role Membership popup...")
+        # CRITICAL: Give Oracle more time to process the ADD operation (especially for remote execution)
+        time.sleep(5)  # Increased from 2 to 5 seconds for remote stability
+        print("🔄 Closing Add Role Membership popup after processing time...")
         
         try:
-            # Close the popup immediately after adding
+            # Close the popup after adequate processing time
             close_btn = find_element_robust(driver, [
                 (By.ID, "_FOpt1:_FOr1:0:_FONSr2:0:MAnt2:4:rhSp1:d1::close"),
                 (By.XPATH, "//a[contains(@id, 'd1::close')]"),
                 (By.XPATH, "//a[@title='Close']"),
                 (By.XPATH, "//div[contains(@id, 'rhSrchPu::popup-container')]//a[contains(@id, '::close')]")
-            ], timeout=10)
+            ], timeout=15)  # Increased timeout for remote execution
             driver.execute_script("arguments[0].click();", close_btn)
-            print("✓ Add Role Membership popup closed immediately")
-            time.sleep(2)  # Allow popup to fully close
+            print("✓ Add Role Membership popup closed after processing")
+            time.sleep(3)  # Increased from 2 to 3 seconds for popup closure
         except Exception as close_error:
             print(f"⚠️ Failed to close popup immediately: {str(close_error)}")
+        
+        # VERIFICATION: Check if the ADD operation was successful before proceeding
+        print("🔍 Verifying duty role was added successfully...")
+        try:
+            # Wait a bit more for Oracle to update the display
+            time.sleep(2)
+            
+            # Try to refresh or re-check the role hierarchy to confirm addition
+            # This helps ensure Oracle has processed the change before navigation
+            verification_elements = driver.find_elements(By.XPATH, f"//span[contains(text(), '{duty_role_name}')]")
+            if verification_elements:
+                print(f"✅ Verification: Found duty role '{duty_role_name}' in role hierarchy")
+            else:
+                print(f"⚠️ Verification: Could not immediately verify duty role '{duty_role_name}' was added")
+        except Exception as verify_error:
+            print(f"⚠️ Verification step failed: {str(verify_error)}")
         
         # NOW check for Oracle warning/error popups after add attempt
         has_popup, popup_message, popup_type = check_for_oracle_popup_messages(driver, "duty role addition")
