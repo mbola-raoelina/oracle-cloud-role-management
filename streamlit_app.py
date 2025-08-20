@@ -231,8 +231,20 @@ def display_output_with_history(operation_type, result_df, operation_details):
     # Save to history first
     save_output_to_history(operation_type, result_df, operation_details)
     
-    # Display current results
-    st.success(f"✅ {operation_type} completed successfully!")
+    # ✅ ENHANCED: Check actual operation status before displaying success message
+    success_count = len(result_df[result_df['Status'] == 'Success']) if 'Status' in result_df.columns else 0
+    failed_count = len(result_df[result_df['Status'] == 'Failed']) if 'Status' in result_df.columns else 0
+    total_records = len(result_df)
+    
+    # Display appropriate message based on actual results
+    if failed_count == 0 and success_count > 0:
+        st.success(f"✅ {operation_type} completed successfully! ({success_count}/{total_records} operations succeeded)")
+    elif success_count > 0 and failed_count > 0:
+        st.warning(f"⚠️ {operation_type} completed with mixed results: {success_count} succeeded, {failed_count} failed")
+    elif failed_count > 0 and success_count == 0:
+        st.error(f"❌ {operation_type} failed: {failed_count}/{total_records} operations failed")
+    else:
+        st.info(f"ℹ️ {operation_type} completed: {total_records} operations processed")
     
     # Create tabs for current results and history
     tab_current, tab_history = st.tabs(["📊 Current Results", "📚 Output History"])
@@ -240,16 +252,23 @@ def display_output_with_history(operation_type, result_df, operation_details):
     with tab_current:
         st.subheader(f"📊 {operation_type} Results")
         
-        # Statistics
-        col1, col2, col3 = st.columns(3)
+        # ✅ ENHANCED: Statistics with better visual indicators
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Total Records", len(result_df))
         with col2:
             success_count = len(result_df[result_df['Status'] == 'Success']) if 'Status' in result_df.columns else 0
-            st.metric("Success", success_count, delta=f"{success_count/len(result_df)*100:.1f}%")
+            success_rate = (success_count/len(result_df)*100) if len(result_df) > 0 else 0
+            delta_color = "normal" if success_rate >= 80 else "inverse" if success_rate < 50 else "off"
+            st.metric("✅ Success", success_count, delta=f"{success_rate:.1f}%", delta_color=delta_color)
         with col3:
             failed_count = len(result_df[result_df['Status'] == 'Failed']) if 'Status' in result_df.columns else 0
-            st.metric("Failed", failed_count)
+            failed_rate = (failed_count/len(result_df)*100) if len(result_df) > 0 else 0
+            delta_color = "inverse" if failed_rate > 0 else "normal"
+            st.metric("❌ Failed", failed_count, delta=f"{failed_rate:.1f}%", delta_color=delta_color)
+        with col4:
+            pending_count = len(result_df[result_df['Status'] == 'Pending']) if 'Status' in result_df.columns else 0
+            st.metric("⏳ Pending", pending_count)
         
         # Results table
         st.dataframe(result_df, use_container_width=True)
